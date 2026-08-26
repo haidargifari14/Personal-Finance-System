@@ -1,0 +1,37 @@
+# Architecture Decision Log
+
+| ID | Decision | Status | Rationale |
+| --- | --- | --- | --- |
+| ADR-001 | Use Google Sheets as the primary data store. | Accepted | It provides an accessible, low-operations storage layer for the current product stage. |
+| ADR-002 | Keep Telegram Bot and Streamlit Dashboard in one repository. | Accepted | Both interfaces share services, models, and the same source of truth. |
+| ADR-003 | Dashboard pages communicate through `AnalyticsService`. | Accepted | This keeps data aggregation testable and prevents UI-to-storage coupling. |
+| ADR-004 | Restrict Google Sheets access to `SheetService`. | Accepted | A single persistence gateway prevents duplicated API logic and simplifies future migration. |
+| ADR-005 | Centralize charts in `dashboard/components/charts.py`. | Accepted | Chart rendering can be reused and kept consistent across pages. |
+| ADR-006 | Prefer reusable dashboard components over page-specific implementations. | Accepted | Shared components improve consistency and reduce duplicated UI code. |
+| ADR-007 | Keep `FinanceService` focused on validation and formatting. | Accepted | Transaction rules remain reusable across interfaces without coupling to storage or UI. |
+| ADR-008 | Use an append-only V2 transaction schema with immutable UUID Transaction IDs and nullable Account IDs. | Accepted | It preserves historical five-column rows, allows a safe backfill, and separates stable business identity from mutable Google Sheets row numbers. |
+| ADR-009 | Store Account metadata in a dedicated `Accounts` worksheet with immutable UUID Account IDs. | Accepted | Account identity and lifecycle data need a stable, independent persistence contract without changing the locked V2 transaction schema. |
+| ADR-010 | Derive Account current balance in `AccountService`; do not persist it as an editable field. | Accepted | The balance remains auditable from initial balance and linked activity, supports future movement sources, and prevents storage drift. |
+| ADR-011 | Require an active Account ID for new transactions while retaining legacy null Account IDs. | Accepted | New activity must have a stable balance owner; historical analytics remain correct without a destructive backfill. |
+| ADR-012 | Persist Transfers and Adjustments in a dedicated Account Movements worksheet. | Accepted | Non-transaction allocation changes must affect Account balance without contaminating Income, Expense, or forecasting data. |
+| ADR-013 | Goal V2 is an Account-linked target, not a second money store. | Accepted | Goal progress remains auditable from the linked Account balance and prevents duplicate manual allocation balances. |
+| ADR-014 | Forecast V2 Financial Outlook aggregates every usable category forecast globally. | Accepted | Sufficient and valid limited forecasts provide one consistent financial condition; insufficient categories remain visible only as diagnostics. |
+| ADR-015 | Recommendation Engine V1 uses explicit Saving Candidates and historical excess, not generic percentage advice. | Accepted | User-approved categories and bounded data-derived capacity keep recommendations explainable, deterministic, and non-persistent. |
+| ADR-016 | Keep Forecast confidence, Forecast display selection, and Saving Candidate optimization eligibility independent. | Accepted | Projection quality, user presentation preference, and user-approved optimization analysis answer different questions; separating them prevents UI state from changing financial advice. |
+| ADR-017 | Retired: calculate Recommendation cashflow from monthly income and expense projections. | Superseded | A second monthly cashflow model conflicts with the Account-balance Financial Outlook and irregular-income use cases. |
+| ADR-018 | Treat Forecast category selection as detail inspection only. | Accepted | Selector changes must never alter Financial Outlook, trajectory, risks, Recommendation, or Scenario baseline. |
+| ADR-019 | Keep Scenario Simulator V1 pure and session-scoped. | Accepted | Hypothetical spending reductions and Goal allocations must never create financial records or mutate Account/Goal state; passing existing Forecast outputs to `ScenarioService` makes the calculation testable and avoids unnecessary Google Sheets reads. |
+| ADR-020 | Separate Overview Current Balance from filtered Net Cashflow. | Accepted | AccountService owns present active-Account balances, while AnalyticsService owns historical Income/Expense metrics. This keeps date filters meaningful without incorrectly redefining the current balance. |
+| ADR-021 | Restrict Settings to integrations and Transaction data management; retain only a clearly labelled Transaction-only backup. | Accepted | Profile/domain services own financial setup. A partial backup must never be represented as a complete V2 financial recovery mechanism, so the present safe scope is explicit. |
+| ADR-022 | Retire orphaned V1 Goal allocation artifacts. | Accepted | Goal V2 derives progress from the linked Account through `GoalService`; retaining inactive V1 allocation-based models and components would leave a conflicting, misleading source-of-truth path. |
+| ADR-023 | Centralize short-lived Google Sheets read snapshots in `SheetService`. | Accepted | Shared 45-second dataset snapshots, targeted mutation invalidation, bounded retry, and stale fallback prevent per-service read duplication without placing financial source data in Streamlit session state. |
+| ADR-024 | Use Financial Outlook as Recommendation’s sole future-balance source. | Accepted | Recommendation receives the existing balance-based Outlook in memory, uses its negative estimated balance as the only shortfall trigger, preserves Saving Candidate independence, and avoids redundant Google Sheets reads. |
+| ADR-025 | Store Monthly Spending Limit as a Profile-owned local planning preference. | Accepted | It is neither a financial event nor a source-of-truth balance. In-memory Forecast status uses classified normalized current-month spending plus global usable future projections, enabling an early warning without Google Sheets writes or reads. |
+| ADR-026 | Add append-only Expense Type and Coverage Months metadata to Transactions. | Accepted | Normal, Periodic, and One-off classifications preserve actual cash records while making recurring-spending discipline analysis resistant to exceptional or pre-paid expenses. Legacy missing Expense metadata is interpreted as Normal. |
+| ADR-027 | Base Monthly Spending Limit and related optimization comparison on normalized spending, not raw cash Expense. | Accepted | Actual liquidity remains governed by full cash movements; Periodic uses a monthly equivalent and One-off contributes zero only to spending-discipline analysis. Globally included future category projections remain Normal because no individual future classification exists. |
+| ADR-028 | Train category behavior only from Normal Expense transactions. | Accepted | Large pre-paid Periodic transactions and exceptional One-off payments must remain visible as actual cash history without inflating daily behavioral forecasts. |
+| ADR-029 | Make Scenario Simulator compare against the global Financial Outlook. | Accepted | Scenario reductions become meaningful only when their baseline matches the global condition presented at the top of Forecast. |
+
+## Updating this log
+
+Add a decision when a change affects system boundaries, data ownership, dependencies, or a long-lived development convention. Include the reason and any notable trade-off.

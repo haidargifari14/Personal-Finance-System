@@ -1,0 +1,33 @@
+Sprint
+
+↓
+
+Objective
+
+↓
+
+Layout
+
+↓
+
+Functional Requirements
+
+↓
+
+Business Rules
+
+↓
+
+Architecture
+
+↓
+
+Files To Update
+
+↓
+
+Coding Rules
+
+↓
+
+Acceptance Criteria

@@ -1,0 +1,342 @@
+{
+  "created_at": "2026-08-21T10:57:20.708372",
+  "worksheet": "Input Bot",
+  "rows": [
+    [
+      "Tanggal",
+      "Jenis",
+      "Kategori",
+      "Nominal",
+      "Catatan"
+    ],
+    [
+      "2026-08-05",
+      "expense",
+      "Makan",
+      "14000",
+      ""
+    ],
+    [
+      "2026-08-06",
+      "expense",
+      "Makan",
+      "19000",
+      "makan malam"
+    ],
+    [
+      "2026-08-06",
+      "expense",
+      "Makan",
+      "10000",
+      "gorengan pagi"
+    ],
+    [
+      "2026-08-06",
+      "expense",
+      "Makan",
+      "21000",
+      "ayam geprek pangeran"
+    ],
+    [
+      "2026-08-06",
+      "expense",
+      "Makan",
+      "20000",
+      "Tianlala"
+    ],
+    [
+      "2026-08-07",
+      "expense",
+      "Makan",
+      "13000",
+      "makan malam padang"
+    ],
+    [
+      "2026-08-07",
+      "expense",
+      "Makan",
+      "19000",
+      "kopi dan makan siang"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Transport",
+      "76500",
+      "Tiket Travel"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Makan",
+      "14000",
+      "Makan Malam Warteg Mulya"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Lainnya",
+      "63000",
+      "Kuota Internet"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Makan",
+      "15000",
+      "Kelapa Ijo (Reimbers)"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Makan",
+      "90500",
+      "Hokben"
+    ],
+    [
+      "2026-08-09",
+      "expense",
+      "Transport",
+      "76500",
+      "Tiket Travel"
+    ],
+    [
+      "2026-08-10",
+      "expense",
+      "Makan",
+      "15000",
+      "kelapa ijo"
+    ],
+    [
+      "2026-08-10",
+      "expense",
+      "Lainnya",
+      "51200",
+      "Top-up Gopay"
+    ],
+    [
+      "2026-08-10",
+      "expense",
+      "Makan",
+      "10000",
+      "Gorengan"
+    ],
+    [
+      "2026-08-10",
+      "income",
+      "Lainnya",
+      "150000",
+      "Reimbers Hokben"
+    ],
+    [
+      "2026-08-11",
+      "expense",
+      "Makan",
+      "13000",
+      "Nasi Kuning"
+    ],
+    [
+      "2026-08-11",
+      "expense",
+      "Makan",
+      "16000",
+      "Bakso malang"
+    ],
+    [
+      "2026-08-11",
+      "expense",
+      "Makan",
+      "20500",
+      "stok mie instan"
+    ],
+    [
+      "2026-08-12",
+      "expense",
+      "Makan",
+      "11000",
+      "Seblak"
+    ],
+    [
+      "2026-08-12",
+      "expense",
+      "Makan",
+      "23000",
+      "makan siang"
+    ],
+    [
+      "2026-08-12",
+      "expense",
+      "Makan",
+      "5000",
+      "Gorengan"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Makan",
+      "19000",
+      "Makan siang"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Makan",
+      "12000",
+      "Air"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Transport",
+      "76500",
+      "Tiket Travel"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Makan",
+      "12000",
+      "Gorengan"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Kesehatan",
+      "150000",
+      "Iuran BPJS"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Transport",
+      "70000",
+      "Bensin"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Makan",
+      "47904",
+      "Ayam Geprek"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Makan",
+      "38720",
+      "Moon Snack"
+    ],
+    [
+      "2026-08-14",
+      "expense",
+      "Belanja",
+      "36155",
+      "Casing HP"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Makan",
+      "17000",
+      "Makan malam"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Lainnya",
+      "76200",
+      "Gopay"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Makan",
+      "22000",
+      "Mcdonald"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Makan",
+      "10000",
+      "Coca-cola zero"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Makan",
+      "40000",
+      "qpon kfc"
+    ],
+    [
+      "2026-08-16",
+      "expense",
+      "Transport",
+      "76500",
+      "Tiket Travel"
+    ],
+    [
+      "2026-08-19",
+      "income",
+      "Lainnya",
+      "16000000",
+      "Uang Kos dari Umi"
+    ],
+    [
+      "2026-08-19",
+      "expense",
+      "Lainnya",
+      "16002500",
+      "Bayar Kosan"
+    ],
+    [
+      "2026-08-19",
+      "expense",
+      "Makan",
+      "15000",
+      "Makan Siang"
+    ],
+    [
+      "2026-08-19",
+      "expense",
+      "Makan",
+      "8500",
+      "Jamur Crispy"
+    ],
+    [
+      "2026-08-19",
+      "expense",
+      "Makan",
+      "32500",
+      "Stok Mie dan Air"
+    ],
+    [
+      "2026-08-20",
+      "expense",
+      "Makan",
+      "19000",
+      "makan siang"
+    ],
+    [
+      "2026-08-20",
+      "expense",
+      "Lainnya",
+      "202500",
+      "wifi"
+    ],
+    [
+      "2026-08-20",
+      "expense",
+      "Makan",
+      "45300",
+      "Moon"
+    ],
+    [
+      "2026-08-20",
+      "expense",
+      "Makan",
+      "13000",
+      "makan siang"
+    ]
+  ]
+}
