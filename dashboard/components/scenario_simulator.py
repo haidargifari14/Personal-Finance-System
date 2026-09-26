@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import Mapping
 
 import pandas as pd
@@ -21,11 +22,15 @@ def render_scenario_simulator(
 ) -> None:
     """Render an editable, session-only Scenario from already loaded results."""
 
-    st.subheader("Scenario Simulator")
-    st.caption(
-        "Scenario adalah sandbox hipotetis. Perubahan di sini tidak menyimpan "
-        "Transaction, Account, Account Movement, atau Goal."
+    st.markdown(
+        "<div class=\"pf-forecast-section-title\">"
+        "<span class=\"material-symbols-rounded\">tune</span>"
+        "5. Scenario Simulator"
+        "<span class=\"pf-forecast-badge pf-forecast-badge--hypothetical\">Hypothetical</span>"
+        "</div>",
+        unsafe_allow_html=True,
     )
+    st.caption("Explore a hypothetical plan without changing your actual financial data.")
     _apply_recommendation_handoff(outlook)
     forecastable_categories = [
         str(item["category"])
@@ -64,7 +69,11 @@ def render_scenario_simulator(
         st.error(allocation_error)
     _render_trajectory(scenario)
     _render_goal_impacts(scenario)
-    if st.button("Reset Scenario", key="scenario_reset"):
+    if st.button(
+        "Reset Scenario",
+        key="scenario_reset",
+        icon=":material/restart_alt:",
+    ):
         _reset_scenario_state()
         st.rerun()
 
@@ -75,7 +84,10 @@ def _render_spending_adjustments(
 ) -> list[dict[str, object]]:
     """Collect category-specific amount or percentage reductions in session state."""
 
-    st.markdown("#### 1. Spending Adjustments")
+    st.markdown(
+        "<div class=\"pf-forecast-scenario-step\">1. Spending Adjustments</div>",
+        unsafe_allow_html=True,
+    )
     chosen = st.multiselect(
         "Categories to adjust",
         options=categories,
@@ -90,30 +102,36 @@ def _render_spending_adjustments(
         )
     }
     adjustments = []
-    for category in chosen:
+    if not chosen:
+        return adjustments
+
+    columns = st.columns(min(3, len(chosen)))
+    for index, category in enumerate(chosen):
         forecast = forecast_by_category[category]
         baseline = int(forecast["projected_remaining_expense"])
-        with st.container(border=True):
-            st.markdown(f"**{category}** — Baseline future expense: {format_currency(baseline)}")
-            first, second = st.columns(2)
-            with first:
+        with columns[index % len(columns)]:
+            with st.container(
+                border=False,
+                key=f"forecast-scenario-adjustment-{category}",
+            ):
+                st.markdown(f"**{escape(category)}**")
+                st.caption(f"Baseline: {format_currency(baseline)}")
                 label = st.selectbox(
-                    "Reduction type",
+                    "Type",
                     options=["Nominal", "Percentage"],
                     key=f"scenario_mode_{category}",
                 )
-            mode = "amount" if label == "Nominal" else "percentage"
-            with second:
+                mode = "amount" if label == "Nominal" else "percentage"
                 maximum = baseline if mode == "amount" else 100
                 value = st.number_input(
-                    "Reduction value",
+                    "Reduction",
                     min_value=0,
                     max_value=maximum,
                     step=1,
                     key=f"scenario_value_{category}",
-                    help="Nominal dalam Rupiah atau persentase dari proyeksi biaya masa depan.",
+                    help="Nominal in Rupiah or a percentage of projected future spending.",
                 )
-            adjustments.append({"category": category, "mode": mode, "value": value})
+                adjustments.append({"category": category, "mode": mode, "value": value})
     return adjustments
 
 
@@ -123,19 +141,22 @@ def _render_goal_allocations(
 ) -> None:
     """Collect optional hypothetical monthly allocation values for active Goals."""
 
-    st.markdown("#### 3. Goal Allocation")
+    st.markdown(
+        "<div class=\"pf-forecast-scenario-step\">3. Goal Allocation</div>",
+        unsafe_allow_html=True,
+    )
+    if potential_saving <= 0:
+        st.caption("No potential saving is available to allocate.")
+        return
     eligible = [
         item for item in goal_forecast.get("goals", [])
         if str(getattr(item["goal"], "status", "")).lower() == "active"
         and item.get("account") is not None
     ]
     if not eligible:
-        st.info("Belum ada Goal aktif dengan Account yang tersedia untuk Scenario.")
+        st.caption("No active Account-linked Goal is available for Scenario allocation.")
         return
-    st.caption(
-        "Total hypothetical allocation cannot exceed "
-        f"{format_currency(potential_saving)}."
-    )
+    st.caption(f"Total hypothetical allocation cannot exceed {format_currency(potential_saving)}.")
     labels = {
         str(item["goal"].goal_id): (
             f"{item['account'].account_name} — {item['goal'].priority.title()} priority"
@@ -148,13 +169,18 @@ def _render_goal_allocations(
         format_func=labels.get,
         key="scenario_allocated_goals",
     )
-    for goal_id in chosen:
-        st.number_input(
-            f"Monthly Scenario allocation: {labels[goal_id]}",
-            min_value=0,
-            step=1,
-            key=f"scenario_goal_allocation_{goal_id}",
-        )
+    for index, goal_id in enumerate(chosen):
+        with st.container(
+            border=False,
+            key=f"forecast-scenario-goal-allocation-{index}",
+        ):
+            st.caption(labels[goal_id])
+            st.number_input(
+                "Monthly allocation",
+                min_value=0,
+                step=1,
+                key=f"scenario_goal_allocation_{goal_id}",
+            )
 
 
 def _current_goal_allocations() -> dict[str, int]:
@@ -178,60 +204,66 @@ def _render_limited_data_warning(scenario: Mapping[str, object]) -> None:
         if item["forecast_data_quality"] == "limited"
     ]
     if limited:
-        st.warning(
-            "Scenario ini mencakup Limited Forecast Data untuk: "
-            f"{', '.join(limited)}. Pengeluaran aktual dapat berbeda material."
+        categories = escape(", ".join(limited))
+        st.markdown(
+            "<div class=\"pf-forecast-inline-warning\">"
+            "<span class=\"material-symbols-rounded\">warning</span>"
+            f"Limited forecast data: {categories} — estimates are less certain."
+            "</div>",
+            unsafe_allow_html=True,
         )
 
 
 def _render_spending_and_balance_impact(scenario: Mapping[str, object]) -> None:
     """Render the three primary, user-facing Scenario outcomes."""
 
-    st.markdown("#### 2. Global Outlook Comparison")
-    first, second, third, fourth = st.columns(4)
+    st.markdown(
+        "<div class=\"pf-forecast-scenario-step\">2. Baseline vs Scenario</div>",
+        unsafe_allow_html=True,
+    )
     improvement = int(scenario["balance_improvement"])
-    percentage = scenario["balance_improvement_percentage"]
-    if improvement > 0:
-        indicator = "↑"
-        delta = f"{float(percentage):+.1f}%" if percentage is not None else "Baseline is zero"
-        delta_color = "normal"
-    elif improvement < 0:
-        indicator = "↓"
-        delta = f"{float(percentage):+.1f}%" if percentage is not None else "Baseline is zero"
-        delta_color = "normal"
-    else:
-        indicator = "→"
-        delta = "0.0%" if percentage is not None else "Baseline is zero"
-        delta_color = "off"
-    first.metric(
-        "Balance Improvement",
-        f"{indicator} {format_currency(improvement)}",
-        delta=delta,
-        delta_color=delta_color,
+    comparison_rows = (
+        (
+            "Normalized Monthly Spending",
+            int(scenario["baseline_projected_normalized_monthly_spending"]),
+            int(scenario["scenario_projected_normalized_monthly_spending"]),
+            True,
+        ),
+        (
+            "Estimated Balance",
+            int(scenario["baseline_estimated_balance"]),
+            int(scenario["scenario_estimated_balance"]),
+            False,
+        ),
+        (
+            "Spending Gap",
+            int(scenario["baseline_spending_limit_gap"]),
+            int(scenario["scenario_spending_limit_gap"]),
+            True,
+        ),
     )
-    second.metric(
-        "Scenario Estimated Balance",
-        format_currency(scenario["scenario_estimated_balance"]),
-    )
-    third.metric(
-        "Scenario Normalized Spending",
-        format_currency(scenario["scenario_projected_normalized_monthly_spending"]),
-    )
-    fourth.metric("Unallocated Saving", format_currency(scenario["unallocated_saving"]))
-    if bool(scenario["monthly_spending_limit_configured"]):
-        baseline_status = "Spending Risk" if scenario["baseline_spending_risk"] else "Within Limit"
-        scenario_status = "Spending Risk" if scenario["scenario_spending_risk"] else "Within Limit"
-        st.caption(
-            "Monthly Spending Limit: "
-            f"{baseline_status} → {scenario_status} · "
-            f"gap {format_currency(scenario['baseline_spending_limit_gap'])} → "
-            f"{format_currency(scenario['scenario_spending_limit_gap'])}."
-        )
+    _render_comparison_table(comparison_rows)
     st.caption(
-        "Goal Allocation is hypothetical monthly planning only; it is not a "
-        "Transaction, Transfer, Account Movement, or Account balance update."
+        "Potential Saving: "
+        f"{format_currency(scenario['potential_saving'])} · Unallocated Saving: "
+        f"{format_currency(scenario['unallocated_saving'])}"
     )
+    if improvement == 0:
+        st.caption("Scenario currently matches baseline.")
     with st.expander("View calculation details"):
+        if bool(scenario["monthly_spending_limit_configured"]):
+            baseline_status = (
+                "Spending Risk" if scenario["baseline_spending_risk"] else "Within Limit"
+            )
+            scenario_status = (
+                "Spending Risk" if scenario["scenario_spending_risk"] else "Within Limit"
+            )
+            st.caption(
+                "Monthly Spending Limit: "
+                f"{baseline_status} → {scenario_status} · "
+                f"gap {format_currency(scenario['baseline_spending_limit_gap'])} → "
+                f"{format_currency(scenario['scenario_spending_limit_gap'])}."
+            )
         st.write(
             {
                 "Current Balance": format_currency(scenario["current_balance"]),
@@ -257,10 +289,60 @@ def _render_spending_and_balance_impact(scenario: Mapping[str, object]) -> None:
         )
 
 
+def _render_comparison_table(
+    rows: tuple[tuple[str, int, int, bool], ...],
+) -> None:
+    """Render existing Scenario values with presentation-only semantic changes."""
+
+    rendered_rows = []
+    for metric, baseline, scenario_value, lower_is_better in rows:
+        change_text, change_tone = _scenario_change_label(
+            baseline,
+            scenario_value,
+            lower_is_better=lower_is_better,
+        )
+        rendered_rows.append(
+            "<tr>"
+            f"<td>{escape(metric)}</td>"
+            f"<td>{format_currency(baseline)}</td>"
+            f"<td>{format_currency(scenario_value)}</td>"
+            f"<td class=\"pf-scenario-change--{change_tone}\">{change_text}</td>"
+            "</tr>"
+        )
+    st.markdown(
+        "<table class=\"pf-scenario-comparison\"><thead><tr>"
+        "<th>Metric</th><th>Baseline</th><th>Scenario</th><th>Change</th>"
+        "</tr></thead><tbody>"
+        f"{''.join(rendered_rows)}</tbody></table>",
+        unsafe_allow_html=True,
+    )
+
+
+def _scenario_change_label(
+    baseline: int,
+    scenario_value: int,
+    *,
+    lower_is_better: bool,
+) -> tuple[str, str]:
+    """Format a display-only Scenario delta using existing calculated values."""
+
+    difference = scenario_value - baseline
+    if difference == 0:
+        return "—", "neutral"
+    improved = difference < 0 if lower_is_better else difference > 0
+    arrow = "↓" if difference < 0 else "↑"
+    amount = format_currency(abs(difference))
+    percentage = f" ({difference / baseline:+.1%})" if baseline else ""
+    return f"{arrow} {amount}{percentage}", "positive" if improved else "negative"
+
+
 def _render_trajectory(scenario: Mapping[str, object]) -> None:
     """Render the two-line comparison from service-derived trajectory data."""
 
-    st.markdown("#### 4. Balance Trajectory")
+    st.markdown(
+        "<div class=\"pf-forecast-scenario-step\">4. Balance Trajectory</div>",
+        unsafe_allow_html=True,
+    )
     scenario_balance_trajectory_chart(
         pd.DataFrame(scenario["baseline_trajectory"]),
         pd.DataFrame(scenario["scenario_trajectory"]),
@@ -270,19 +352,18 @@ def _render_trajectory(scenario: Mapping[str, object]) -> None:
 def _render_goal_impacts(scenario: Mapping[str, object]) -> None:
     """Render only Goals receiving a hypothetical allocation."""
 
-    st.markdown("#### 5. Goal Impact")
+    st.markdown(
+        "<div class=\"pf-forecast-scenario-step\">5. Goal Impact</div>",
+        unsafe_allow_html=True,
+    )
     impacts = scenario["goal_impacts"]
     if not impacts:
-        st.info("Alokasikan Potential Saving ke Goal aktif untuk melihat dampaknya.")
+        st.caption("Allocate potential saving to an active Goal to see its impact.")
         return
-    st.caption(
-        "Projected Goal Completion assumes the simulated monthly allocation "
-        "continues in future months."
-    )
-    for impact in impacts:
+    for index, impact in enumerate(impacts):
         goal = impact["goal"]
         account = impact["account"]
-        with st.container(border=True):
+        with st.container(border=False, key=f"forecast-scenario-goal-impact-{index}"):
             st.markdown(
                 f"**{account.account_name} — {goal.priority.title()} priority Goal**"
             )
@@ -300,11 +381,22 @@ def _render_goal_impacts(scenario: Mapping[str, object]) -> None:
                 "Simulated Goal Position",
                 format_currency(impact["simulated_current_progress"]),
             )
-            st.write(
-                f"Health: **{impact['baseline_health']} → {impact['scenario_health']}**  \\n"
-                f"Projected completion: **{impact['baseline_completion']} → "
-                f"{impact['scenario_completion']}**"
-            )
+            health, completion = st.columns(2)
+            with health:
+                st.caption("Health")
+                st.markdown(
+                    f"{impact['baseline_health']} → **{impact['scenario_health']}**"
+                )
+            with completion:
+                st.caption("Projected Completion")
+                st.markdown(
+                    f"{impact['baseline_completion']} → "
+                    f"**{impact['scenario_completion']}**"
+                )
+            if impact["allocation"]:
+                st.caption(
+                    "Hypothetical allocation only; it does not change actual data."
+                )
             if impact["remaining_contribution_gap"]:
                 st.caption(
                     "Remaining monthly contribution gap: "

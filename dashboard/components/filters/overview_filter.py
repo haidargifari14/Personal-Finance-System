@@ -46,7 +46,7 @@ def render_overview_filter(categories: list[str]) -> tuple[list[str], str]:
     available_categories = category_options_for_type(categories, transaction_type)
     _initialize_overview_filter_state(available_categories)
 
-    with st.container(border=True):
+    with st.container(border=False, key="overview-filters"):
         st.caption("Overview filters")
         with st.container(horizontal=True):
             transaction_type = st.selectbox(

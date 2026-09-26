@@ -15,13 +15,32 @@ PAGE_OPTIONS = (
     "Settings",
 )
 
+NAVIGATION_ICONS = {
+    "Overview": "⌂",
+    "Analytics": "▥",
+    "Transactions": "☷",
+    "Forecast": "⌁",
+    "Profile": "♙",
+    "Settings": "⚙",
+}
+
 
 def render_sidebar() -> str:
     """Render responsive dashboard navigation and return the active page."""
 
     with st.sidebar:
-        st.title("💰 Personal Finance")
-        page = st.radio("Navigation", PAGE_OPTIONS)
+        st.markdown(
+            "<div class=\"pf-sidebar-brand\">"
+            "<span class=\"pf-sidebar-brand__icon\">💰</span>"
+            "<span>Personal Finance</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        page = st.radio(
+            "Navigation",
+            PAGE_OPTIONS,
+            format_func=lambda option: f"{NAVIGATION_ICONS[option]}  {option}",
+        )
 
     render_global_filter()
 

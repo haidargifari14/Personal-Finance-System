@@ -955,6 +955,8 @@ class AnalyticsService:
         transaction_count = len(df)
 
         return {
+            "income": income,
+            "expense": expense,
             "average_income": self._get_average_amount(income_transactions),
             "largest_income": self._get_largest_amount(income_transactions),
             "average_expense": self._get_average_amount(expense_transactions),
@@ -974,6 +976,8 @@ class AnalyticsService:
         """Return empty Financial Statistics values for a filtered empty state."""
 
         return {
+            "income": 0,
+            "expense": 0,
             "average_income": None,
             "largest_income": None,
             "average_expense": None,

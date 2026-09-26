@@ -39,12 +39,18 @@ class DataManagementService:
         self,
         sheet_service: SheetService | None = None,
         backup_directory: Path | None = None,
+        backup_store: dict[str, dict[str, Any]] | None = None,
     ) -> None:
-        """Initialize reusable storage dependencies for data management."""
+        """Initialize transaction dependencies and an ephemeral backup store.
 
-        root = Path(__file__).resolve().parents[1]
+        ``backup_directory`` is retained for call compatibility but is never
+        read or written. Backups live only in the supplied process/session store
+        and should be downloaded by the user for durable retention.
+        """
+
+        del backup_directory
         self._sheet_service = sheet_service
-        self._backup_directory = backup_directory or root / "data" / "backups"
+        self._backup_store = backup_store if backup_store is not None else {}
 
     def get_export_data(self) -> tuple[bytes, bytes]:
         """Return complete transaction data serialized as CSV and XLSX."""
@@ -55,13 +61,11 @@ class DataManagementService:
         return ReportService.export_csv(export_data), ReportService.export_excel(export_data)
 
     def create_backup(self) -> dict[str, Any]:
-        """Persist a clearly scoped local snapshot of Transaction records only."""
+        """Create an ephemeral transaction-only snapshot for restore/download."""
 
         transactions = self._records_from_dataframe(self._transactions_dataframe())
         created_at = datetime.now()
-        self._backup_directory.mkdir(parents=True, exist_ok=True)
         backup_id = created_at.strftime("transactions-%Y%m%d-%H%M%S-%f")
-        backup_path = self._backup_directory / f"{backup_id}.json"
         payload = {
             "scope": "transactions_only",
             "excluded_datasets": ["accounts", "account_movements", "goals"],
@@ -69,33 +73,34 @@ class DataManagementService:
             "transaction_count": len(transactions),
             "transactions": transactions,
         }
-        backup_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._backup_store[backup_id] = payload
         return {"backup_id": backup_id, **payload}
 
     def get_backups(self) -> list[dict[str, Any]]:
-        """Return valid transaction-only backups without exposing their paths."""
+        """Return transaction-only backups held in the current process/session."""
 
-        if not self._backup_directory.exists():
-            return []
         backups = []
-        for backup_path in self._backup_directory.glob("transactions-*.json"):
+        for backup_id, payload in self._backup_store.items():
             try:
-                payload = json.loads(backup_path.read_text(encoding="utf-8"))
+                self._validate_backup_payload(payload)
                 timestamp = datetime.fromisoformat(str(payload["created_at"]))
                 transaction_count = int(payload["transaction_count"])
-                if not isinstance(payload.get("transactions"), list):
-                    continue
-            except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
+            except (TypeError, ValueError, KeyError):
                 continue
             backups.append(
                 {
-                    "backup_id": backup_path.stem,
+                    "backup_id": backup_id,
                     "created_at": timestamp,
                     "transaction_count": transaction_count,
-                    "scope": str(payload.get("scope", "transactions_only")),
+                    "scope": "transactions_only",
                 }
             )
         return sorted(backups, key=lambda backup: backup["created_at"], reverse=True)
+
+    def get_backup_download(self, backup_id: str) -> bytes:
+        """Serialize one ephemeral backup for an explicit user download."""
+
+        return json.dumps(self._load_backup(backup_id), indent=2).encode("utf-8")
 
     def get_backup_preview(self, backup_id: str) -> dict[str, Any]:
         """Validate a backup before any transaction-only destructive restore."""
@@ -117,12 +122,29 @@ class DataManagementService:
         }
 
     def restore_backup(self, backup_id: str) -> int:
-        """Replace Transactions only after schema and identity validation."""
+        """Restore one ephemeral backup after schema and identity validation."""
 
-        preview = self.get_backup_preview(backup_id)
-        transactions = self._records_from_dataframe(preview["transactions"])
-        self._get_sheet_service().replace_transactions(transactions)
-        return len(transactions)
+        return self._restore_backup_payload(self._load_backup(backup_id))
+
+    def preview_backup_content(self, content: bytes) -> dict[str, Any]:
+        """Validate a downloaded backup payload without using server storage."""
+
+        payload = self._decode_backup_content(content)
+        transactions, errors = self._validate_records(payload["transactions"])
+        if errors:
+            raise ValueError("Selected backup contains invalid transaction data.")
+        return {
+            "created_at": datetime.fromisoformat(payload["created_at"]),
+            "transaction_count": len(transactions),
+            "transactions": pd.DataFrame(transactions),
+            "scope": "transactions_only",
+            "excluded_datasets": payload["excluded_datasets"],
+        }
+
+    def restore_backup_content(self, content: bytes) -> int:
+        """Restore uploaded backup bytes without requiring local backup files."""
+
+        return self._restore_backup_payload(self._decode_backup_content(content))
 
     def preview_import(self, content: bytes, file_name: str) -> dict[str, Any]:
         """Read and validate an uploaded CSV or XLSX without writing data."""
@@ -298,20 +320,54 @@ class DataManagementService:
         )
 
     def _load_backup(self, backup_id: str) -> dict[str, Any]:
-        """Load one known backup identifier while preventing path traversal."""
+        """Load one ephemeral backup identifier without filesystem access."""
 
         if not backup_id.startswith("transactions-") or "/" in backup_id or "\\" in backup_id:
             raise ValueError("Selected backup was not found.")
-        backup_path = self._backup_directory / f"{backup_id}.json"
         try:
-            payload = json.loads(backup_path.read_text(encoding="utf-8"))
-            if not isinstance(payload.get("transactions"), list):
-                raise ValueError
-            if payload.get("scope", "transactions_only") != "transactions_only":
-                raise ValueError
+            payload = self._backup_store[backup_id]
+            self._validate_backup_payload(payload)
             return payload
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (KeyError, TypeError, ValueError):
             raise ValueError("Selected backup was not found.") from None
+
+    @staticmethod
+    def _validate_backup_payload(payload: dict[str, Any]) -> None:
+        """Validate the non-financial envelope required by backup operations."""
+
+        if payload.get("scope") != "transactions_only":
+            raise ValueError("Unsupported backup scope.")
+        if not isinstance(payload.get("transactions"), list):
+            raise ValueError("Backup transactions are invalid.")
+        datetime.fromisoformat(str(payload["created_at"]))
+        int(payload["transaction_count"])
+        if payload.get("excluded_datasets") != [
+            "accounts",
+            "account_movements",
+            "goals",
+        ]:
+            raise ValueError("Backup scope metadata is invalid.")
+
+    def _decode_backup_content(self, content: bytes) -> dict[str, Any]:
+        """Decode a user-provided JSON backup entirely in memory."""
+
+        try:
+            payload = json.loads(content.decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError
+            self._validate_backup_payload(payload)
+            return payload
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+            raise ValueError("Selected backup was not found.") from None
+
+    def _restore_backup_payload(self, payload: dict[str, Any]) -> int:
+        """Restore a validated backup payload through the transaction repository."""
+
+        transactions, errors = self._validate_records(payload["transactions"])
+        if errors:
+            raise ValueError("Selected backup contains invalid transaction data.")
+        self._get_sheet_service().replace_transactions(transactions)
+        return len(transactions)
 
     def _get_sheet_service(self) -> SheetService:
         """Return the shared Google Sheets repository only when data is needed."""

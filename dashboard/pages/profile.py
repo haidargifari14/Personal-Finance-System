@@ -28,7 +28,7 @@ def render() -> None:
     """Render the Profile workspace without direct Google Sheets access."""
 
     st.title("Profile")
-    st.caption("Manage personal details, Accounts, and future financial goals.")
+    st.caption("Manage your financial setup, accounts, and goals.")
     settings_service = SettingsService()
     try:
         with st.spinner("Loading profile..."):
@@ -37,7 +37,8 @@ def render() -> None:
         st.error("Unable to load profile. Default values are being used.")
         settings = UserSettings()
 
-    _render_personal(settings_service, settings)
+    with st.expander("Personal details", expanded=False):
+        _render_personal(settings_service, settings)
     st.space("small")
     _render_financial_preferences(settings_service)
     st.space("small")
@@ -52,30 +53,28 @@ def _render_personal(
 ) -> None:
     """Render the existing Personal settings form in its new Profile home."""
 
-    with st.container(border=True):
-        st.subheader("Personal")
-        st.caption("Personal details used by the dashboard.")
-        with st.form("profile_personal_form"):
-            name = st.text_input("Name", value=settings.name)
-            submitted = st.form_submit_button("Save Personal", type="primary")
-        if not submitted:
-            return
-        try:
-            with st.spinner("Saving profile..."):
-                service.save(
-                    UserSettings(
-                        **{
-                            **settings.to_dict(),
-                            "name": name.strip(),
-                        }
-                    )
+    st.caption("Personal details used by the dashboard.")
+    with st.form("profile_personal_form"):
+        name = st.text_input("Name", value=settings.name)
+        submitted = st.form_submit_button("Save Personal")
+    if not submitted:
+        return
+    try:
+        with st.spinner("Saving profile..."):
+            service.save(
+                UserSettings(
+                    **{
+                        **settings.to_dict(),
+                        "name": name.strip(),
+                    }
                 )
-        except ValueError as error:
-            st.error(str(error))
-        except OSError:
-            st.error("Unable to save profile. Please try again.")
-        else:
-            st.success("Personal profile saved.")
+            )
+    except ValueError as error:
+        st.error(str(error))
+    except OSError:
+        st.error("Unable to save profile. Please try again.")
+    else:
+        st.success("Personal profile saved.")
 
 
 def _render_financial_preferences(service: SettingsService) -> None:
@@ -86,20 +85,28 @@ def _render_financial_preferences(service: SettingsService) -> None:
     except OSError:
         monthly_limit = 0
         st.error("Unable to load Financial Preferences. Please try again.")
-    with st.container(border=True):
-        st.subheader("Financial Preferences")
-        st.caption("Maximum monthly spending level you want to maintain.")
+    with st.container(border=True, key="profile-preferences"):
+        _render_section_title("1", "Financial Preferences", "tune")
         with st.form("profile_financial_preferences_form"):
-            limit = int(
-                st.number_input(
-                    "Monthly Spending Limit",
-                    min_value=0,
-                    value=monthly_limit,
-                    step=50_000,
-                    help="Set to 0 to disable Spending Risk monitoring.",
-                )
-            )
-            submitted = st.form_submit_button("Save Financial Preferences")
+            with st.container(key="profile-preferences-control"):
+                field, action = st.columns([2.4, 1], vertical_alignment="bottom")
+                with field:
+                    limit = int(
+                        st.number_input(
+                            "Monthly Spending Limit",
+                            min_value=0,
+                            value=monthly_limit,
+                            step=50_000,
+                            help="Set to 0 to disable Spending Risk monitoring.",
+                        )
+                    )
+                    st.caption("Used by Financial Outlook to evaluate spending risk.")
+                with action:
+                    submitted = st.form_submit_button(
+                        "Save Preferences",
+                        icon=":material/save:",
+                        width="stretch",
+                    )
         if not submitted:
             return
         try:
@@ -116,14 +123,13 @@ def _render_accounts() -> None:
     service = AccountService()
     movement_service = AccountMovementService()
     feedback = st.session_state.pop("profile_account_feedback", None)
-    with st.container(border=True):
+    with st.container(border=True, key="profile-accounts"):
         heading, transfer, adjustment, action = st.columns(
-            [3, 1, 1, 1],
+            [3.6, 1.15, 1.35, 1.35],
             vertical_alignment="center",
         )
         with heading:
-            st.subheader("Accounts")
-            st.caption("Manage money allocations and their current balances.")
+            _render_section_title("2", "Accounts", "account_balance_wallet")
         with transfer:
             transfer_requested = st.button(
                 "Transfer",
@@ -142,6 +148,7 @@ def _render_accounts() -> None:
             if st.button(
                 "Add Account",
                 key="profile_add_account",
+                type="primary",
                 icon=":material/add:",
                 width="stretch",
             ):
@@ -150,6 +157,11 @@ def _render_accounts() -> None:
             with st.spinner("Loading accounts..."):
                 account_summaries = service.get_account_summaries()
                 movements = movement_service.list_movements()
+                linked_goals = {
+                    goal.account_id: goal
+                    for goal in GoalService().list_goals()
+                    if goal.status in {"active", "paused"}
+                }
         except Exception:
             st.error("Unable to load accounts. Please try again.")
             return
@@ -177,14 +189,14 @@ def _render_accounts() -> None:
             account_summaries
         )
         if active_summaries:
-            st.markdown("#### Active Accounts")
-        for summary in active_summaries:
-            _render_account_summary(summary)
+            _render_account_grid(active_summaries, linked_goals)
         if archived_summaries:
-            st.markdown("#### Archived Accounts")
-            st.caption("Archived Accounts remain readable for historical integrity.")
-        for summary in archived_summaries:
-            _render_account_summary(summary)
+            with st.expander("Archived Accounts", expanded=False):
+                st.caption("Archived Accounts remain readable for historical integrity.")
+                _render_account_grid(archived_summaries, linked_goals)
+
+    with st.container(border=True, key="profile-transfers"):
+        _render_section_title("3", "Account Transfers", "swap_horiz")
         _render_movement_history(movements, account_summaries)
 
     if st.session_state.get("profile_account_form_mode"):
@@ -201,7 +213,23 @@ def _render_accounts() -> None:
         _render_movement_delete_dialog(movement_service)
 
 
-def _render_account_summary(summary: dict[str, object]) -> None:
+def _render_account_grid(
+    account_summaries: list[dict[str, object]],
+    linked_goals: dict[str, Goal],
+) -> None:
+    """Render Account summaries in responsive Profile card rows."""
+
+    for start in range(0, len(account_summaries), 3):
+        columns = st.columns(3, gap="small")
+        for column, summary in zip(columns, account_summaries[start:start + 3]):
+            with column:
+                _render_account_summary(summary, linked_goals)
+
+
+def _render_account_summary(
+    summary: dict[str, object],
+    linked_goals: dict[str, Goal],
+) -> None:
     """Render one Account using only AccountService summary data."""
 
     account = summary["account"]
@@ -210,18 +238,29 @@ def _render_account_summary(summary: dict[str, object]) -> None:
     current_balance = int(summary["current_balance"])
     has_activity = bool(summary["has_activity"])
     is_archived = account.status == "archived"
-    with st.container(border=True):
-        details, edit, archive, delete = st.columns(
-            [5, 1, 1, 1],
-            vertical_alignment="center",
-        )
-        with details:
-            st.write(f"**{account.account_name}**")
-            st.caption(
-                f"Location: {account.account_location} · "
-                f"Status: {account.status.title()}"
+    with st.container(border=True, key=f"profile-account-card-{account.account_id}"):
+        top, badge = st.columns([3, 1], vertical_alignment="center")
+        with top:
+            st.markdown(f"**{account.account_name}**")
+            st.caption(account.account_location)
+        with badge:
+            st.markdown(
+                f'<span class="pf-status-badge pf-status-badge--{account.status}">'
+                f"{account.status.title()}</span>",
+                unsafe_allow_html=True,
             )
-            st.write(f"Current Balance: **{format_currency(current_balance)}**")
+        st.caption("Current Balance")
+        st.markdown(
+            f'<div class="pf-profile-account-balance">{format_currency(current_balance)}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Linked Goal")
+        linked_goal = linked_goals.get(account.account_id)
+        if linked_goal:
+            st.caption(linked_goal.goal_id if False else "Goal linked")
+        else:
+            st.caption("—")
+        edit, archive, delete = st.columns(3)
         with edit:
             if st.button(
                 "Edit",
@@ -287,28 +326,31 @@ def _render_movement_history(
         for summary in account_summaries
         if isinstance((account := summary["account"]), Account)
     }
-    st.divider()
-    st.subheader("Account Movements")
     st.caption("Transfers and adjustments are separate from Income and Expense transactions.")
     if not movements:
         st.info("No Account Movements yet.")
         return
-    for movement in movements[:10]:
+    for movement in movements[:5]:
+        _render_movement_entry(movement, account_labels)
+    if len(movements) > 5:
+        with st.expander("View full movement history", expanded=False):
+            for movement in movements[5:]:
+                _render_movement_entry(movement, account_labels)
+
+
+def _render_movement_entry(
+    movement: AccountMovement,
+    account_labels: dict[str, str],
+) -> None:
+    """Render one movement with its existing delete action intact."""
+
+    movement_key = (
+        f"profile-movement-{movement.movement_type}-{movement.movement_id}"
+    )
+    with st.container(border=True, key=movement_key):
         details, delete = st.columns([6, 1], vertical_alignment="center")
         with details:
-            if movement.movement_type == "transfer":
-                source = _movement_account_label(movement.from_account_id, account_labels)
-                destination = _movement_account_label(movement.to_account_id, account_labels)
-                st.write(f"**Transfer** · {movement.date}")
-                st.caption(f"{source} → {destination}")
-                st.write(format_currency(movement.amount))
-            else:
-                account = _movement_account_label(movement.account_id, account_labels)
-                st.write(f"**Adjustment** · {movement.date}")
-                st.caption(account)
-                st.write(f"Delta: {format_currency(movement.amount)}")
-            if movement.note:
-                st.caption(movement.note)
+            _render_movement_details(movement, account_labels)
         with delete:
             if st.button(
                 "Delete",
@@ -317,6 +359,57 @@ def _render_movement_history(
                 width="stretch",
             ):
                 st.session_state["profile_account_movement_deleting"] = movement
+
+
+def _render_movement_details(
+    movement: AccountMovement,
+    account_labels: dict[str, str],
+) -> None:
+    """Render the compact, type-specific information for one movement."""
+
+    movement_label = "Transfer" if movement.movement_type == "transfer" else "Adjustment"
+    st.markdown(
+        f'<span class="pf-movement-badge pf-movement-badge--{movement.movement_type}">'
+        f"{movement_label}</span>",
+        unsafe_allow_html=True,
+    )
+    if movement.movement_type == "transfer":
+        source = _movement_account_label(movement.from_account_id, account_labels)
+        destination = _movement_account_label(movement.to_account_id, account_labels)
+        source_column, arrow_column, destination_column, amount_column = st.columns(
+            [3, 0.45, 3, 1.35],
+            vertical_alignment="center",
+        )
+        with source_column:
+            st.write(source)
+        with arrow_column:
+            st.markdown(
+                '<span class="material-symbols-rounded pf-movement-arrow">arrow_forward</span>',
+                unsafe_allow_html=True,
+            )
+        with destination_column:
+            st.write(destination)
+        with amount_column:
+            st.markdown(
+                f'<div class="pf-movement-amount">{format_currency(movement.amount)}</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        account = _movement_account_label(movement.account_id, account_labels)
+        amount_class = "positive" if movement.amount >= 0 else "negative"
+        signed_amount = f"+{format_currency(movement.amount)}" if movement.amount >= 0 else format_currency(movement.amount)
+        account_column, amount_column = st.columns([5, 1.35], vertical_alignment="center")
+        with account_column:
+            st.write(account)
+        with amount_column:
+            st.markdown(
+                f'<div class="pf-movement-amount pf-movement-amount--{amount_class}">'
+                f"Delta: {signed_amount}</div>",
+                unsafe_allow_html=True,
+            )
+    st.caption(str(movement.date))
+    if movement.note:
+        st.caption(movement.note)
 
 
 def _movement_account_label(
@@ -514,15 +607,15 @@ def _render_goals() -> None:
 
     service = GoalService()
     feedback = st.session_state.pop("profile_goal_feedback", None)
-    with st.container(border=True):
+    with st.container(border=True, key="profile-goals"):
         heading, action = st.columns([5, 1], vertical_alignment="center")
         with heading:
-            st.subheader("Goals")
-            st.caption("Targets are linked to Account allocations; progress is derived.")
+            _render_section_title("4", "Goals", "target")
         with action:
             if st.button(
                 "Add Goal",
                 key="profile_add_goal_v2",
+                type="primary",
                 icon=":material/add:",
                 width="stretch",
             ):
@@ -537,8 +630,11 @@ def _render_goals() -> None:
             st.success(feedback)
         if not summaries:
             st.info("No Goals yet. Add one to track an Account allocation.")
-        for summary in summaries:
-            _render_goal_summary(summary)
+        for start in range(0, len(summaries), 2):
+            columns = st.columns(2, gap="small")
+            for column, summary in zip(columns, summaries[start:start + 2]):
+                with column:
+                    _render_goal_summary(summary)
 
     if st.session_state.get("profile_goal_form_mode"):
         _render_goal_dialog(service)
@@ -553,11 +649,8 @@ def _render_goal_summary(summary: dict[str, object]) -> None:
     account = summary["account"]
     if not isinstance(goal, Goal):
         return
-    with st.container(border=True):
-        details, edit, status, close, delete = st.columns(
-            [5, 1, 1, 1, 1],
-            vertical_alignment="center",
-        )
+    with st.container(border=True, key=f"profile-goal-card-{goal.goal_id}"):
+        details = st.container()
         with details:
             if isinstance(account, Account):
                 st.write(f"**{account.account_name}**")
@@ -581,7 +674,12 @@ def _render_goal_summary(summary: dict[str, object]) -> None:
                 f"Deadline: {_goal_deadline_label(goal.deadline)} · "
                 f"Priority: {goal.priority.title()} · Status: {goal.status.title()}"
             )
-            st.write(f"Health: **{summary['health']}**")
+            health = str(summary["health"])
+            st.markdown(
+                f'<span class="pf-goal-badge pf-goal-badge--{_goal_health_class(health)}">'
+                f"{health}</span>",
+                unsafe_allow_html=True,
+            )
             required = summary["required_monthly_contribution"]
             if isinstance(required, (int, float)):
                 st.caption(
@@ -589,6 +687,7 @@ def _render_goal_summary(summary: dict[str, object]) -> None:
                 )
             elif goal.deadline is None:
                 st.caption("Required monthly contribution: N/A (no deadline)")
+        edit, status, close, delete = st.columns(4)
         with edit:
             if st.button(
                 "Edit",
@@ -624,6 +723,31 @@ def _render_goal_summary(summary: dict[str, object]) -> None:
                 width="stretch",
             ):
                 st.session_state["profile_goal_deleting"] = goal
+
+
+def _render_section_title(number: str, title: str, icon: str) -> None:
+    """Render a consistent numbered Profile section title."""
+
+    st.markdown(
+        "<div class=\"pf-profile-section-title\">"
+        f"<span class=\"material-symbols-rounded\">{icon}</span>"
+        f"<span>{number}. {title}</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _goal_health_class(health: str) -> str:
+    """Return a UI-only semantic class for a service-derived Goal health state."""
+
+    normalized = health.strip().lower()
+    if normalized in {"on track", "achieved"}:
+        return "positive"
+    if normalized in {"at risk", "limited"}:
+        return "warning"
+    if normalized in {"off track", "overdue"}:
+        return "negative"
+    return "neutral"
 
 
 def _goal_deadline_label(deadline: str | None) -> str:

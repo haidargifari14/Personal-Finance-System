@@ -11,6 +11,7 @@ import unittest
 from models.goal import Goal
 from services.recommendation_service import RecommendationService
 from services.settings_service import SettingsService
+from tests.test_settings_service import FakeSettingsWorksheet
 
 
 class RecommendationServiceTests(unittest.TestCase):
@@ -460,15 +461,18 @@ class RecommendationServiceTests(unittest.TestCase):
 
         with TemporaryDirectory() as temporary_directory:
             storage_path = Path(temporary_directory) / "settings.json"
-            settings = SettingsService(storage_path)
+            worksheet = FakeSettingsWorksheet()
+            settings = SettingsService(storage_path, worksheet)
             self.assertEqual(settings.get_saving_candidates(["Makan"]), {"Makan": False})
             settings.save_saving_candidates({"Makan": True, "Transport": False})
             self.assertEqual(
-                SettingsService(storage_path).get_saving_candidates(["Makan", "Transport"]),
+                SettingsService(storage_path, worksheet).get_saving_candidates(
+                    ["Makan", "Transport"]
+                ),
                 {"Makan": True, "Transport": False},
             )
             self.assertEqual(
-                SettingsService(storage_path).get_saving_candidates(
+                SettingsService(storage_path, worksheet).get_saving_candidates(
                     ["Makan", "Transport", "Belanja"]
                 ),
                 {"Makan": True, "Transport": False, "Belanja": False},

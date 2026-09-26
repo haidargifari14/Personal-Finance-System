@@ -91,3 +91,24 @@ build/
 dist/
 *.egg-info/
 .eggs/
+
+# =========================================================
+# DEPLOYMENT RUNTIME STATE / FINANCIAL EXPORTS
+# =========================================================
+service-account*.json
+
+# Runtime local state (never required after deployment/restart)
+data/settings.json
+data/backups/
+outputs/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated financial exports
+*.csv
+*.xls
+*.xlsx
+

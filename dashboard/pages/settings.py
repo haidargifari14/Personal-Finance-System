@@ -16,7 +16,7 @@ def render() -> None:
     """Render the Settings workspace with isolated section failures."""
 
     st.title("Settings")
-    st.caption("Check integrations and manage transaction data safely.")
+    st.caption("Manage app integrations and your financial data.")
     st.space("small")
     _render_section_safely("Integrations", _render_integrations)
     st.space("small")
@@ -39,16 +39,19 @@ def _render_integrations() -> None:
         else:
             st.error(message or "Connection check failed.")
 
-    with st.container(border=True):
-        st.subheader("Integrations")
-        telegram_requested = render_integration_card(
-            st.session_state[telegram_key],
-            key="settings_telegram",
-        )
-        sheets_requested = render_integration_card(
-            st.session_state[sheets_key],
-            key="settings_google_sheets",
-        )
+    with st.container(border=True, key="settings-integrations"):
+        _render_section_title("1", "Integrations", "power")
+        telegram_column, sheets_column = st.columns(2, gap="small")
+        with telegram_column:
+            telegram_requested = render_integration_card(
+                st.session_state[telegram_key],
+                key="settings_telegram",
+            )
+        with sheets_column:
+            sheets_requested = render_integration_card(
+                st.session_state[sheets_key],
+                key="settings_google_sheets",
+            )
 
         if telegram_requested:
             _recheck_integration(
@@ -95,14 +98,22 @@ def _render_section_safely(name: str, render_section: Callable[[], None]) -> Non
 def _render_data_management() -> None:
     """Render Settings-owned controls for safe transaction data management."""
 
-    service = DataManagementService()
+    backup_store = st.session_state.setdefault("settings_transaction_backups", {})
+    service = DataManagementService(backup_store=backup_store)
     _render_data_management_feedback()
-    with st.container(border=True):
-        st.subheader("Data Management")
-        _render_export_section(service)
-        _render_backup_section(service)
-        _render_import_section(service)
-        _render_danger_zone(service)
+    with st.container(border=True, key="settings-data-management"):
+        _render_section_title("2", "Data Management", "database")
+        export_import, backup_restore = st.columns(2, gap="small")
+        with export_import:
+            with st.container(border=True, key="settings-export-import-card"):
+                _render_export_section(service)
+                _render_import_section(service)
+        with backup_restore:
+            with st.container(border=True, key="settings-backup-restore-card"):
+                _render_backup_section(service)
+                _render_restore_section(service)
+        with st.container(border=True, key="settings-danger-zone"):
+            _render_danger_zone(service)
 
     if st.session_state.get("settings_restore_backup_id"):
         _render_restore_confirmation(service)
@@ -114,24 +125,17 @@ def _render_export_section(service: DataManagementService) -> None:
     """Render full-dataset export controls using ReportService serialization."""
 
     st.markdown("#### Export data")
-    if st.button(
-        "Prepare CSV and Excel export",
-        key="settings_prepare_export",
-        icon=":material/download:",
-    ):
-        try:
-            with st.spinner("Preparing complete transaction export..."):
-                csv_data, excel_data = service.get_export_data()
-        except Exception:
-            st.error("Unable to prepare transaction export. Please try again.")
-        else:
-            st.session_state["settings_export_csv"] = csv_data
-            st.session_state["settings_export_excel"] = excel_data
-            st.success("Export files are ready to download.")
-
     csv_data = st.session_state.get("settings_export_csv")
     excel_data = st.session_state.get("settings_export_excel")
-    with st.container(horizontal=True):
+    prepare, csv, excel = st.columns(3, gap="small")
+    with prepare:
+        prepare_requested = st.button(
+            "Prepare Export",
+            key="settings_prepare_export",
+            icon=":material/download:",
+            width="stretch",
+        )
+    with csv:
         st.download_button(
             "Export CSV",
             data=csv_data or b"",
@@ -140,7 +144,9 @@ def _render_export_section(service: DataManagementService) -> None:
             icon=":material/table_view:",
             disabled=csv_data is None,
             on_click="ignore",
+            width="stretch",
         )
+    with excel:
         st.download_button(
             "Export Excel",
             data=excel_data or b"",
@@ -152,7 +158,18 @@ def _render_export_section(service: DataManagementService) -> None:
             icon=":material/grid_on:",
             disabled=excel_data is None,
             on_click="ignore",
+            width="stretch",
         )
+    if prepare_requested:
+        try:
+            with st.spinner("Preparing complete transaction export..."):
+                csv_data, excel_data = service.get_export_data()
+        except Exception:
+            st.error("Unable to prepare transaction export. Please try again.")
+        else:
+            st.session_state["settings_export_csv"] = csv_data
+            st.session_state["settings_export_excel"] = excel_data
+            st.success("Export files are ready to download.")
 
 
 def _render_backup_section(service: DataManagementService) -> None:
@@ -173,7 +190,20 @@ def _render_backup_section(service: DataManagementService) -> None:
         )
         st.success("Status: Success")
     else:
-        st.info("No backup yet.")
+        st.warning("No backup yet.", icon=":material/warning:")
+
+    backup_download = st.session_state.get("settings_transaction_backup_download")
+    if isinstance(backup_download, bytes):
+        st.download_button(
+            "Download transaction backup",
+            data=backup_download,
+            file_name=st.session_state.get(
+                "settings_transaction_backup_filename",
+                "transactions-backup.json",
+            ),
+            mime="application/json",
+            icon=":material/download:",
+        )
 
     if st.button(
         "Create transaction-only backup",
@@ -186,6 +216,12 @@ def _render_backup_section(service: DataManagementService) -> None:
         except Exception:
             st.error("Backup failed. Please try again.")
         else:
+            st.session_state["settings_transaction_backup_download"] = (
+                service.get_backup_download(backup["backup_id"])
+            )
+            st.session_state["settings_transaction_backup_filename"] = (
+                f"{backup['backup_id']}.json"
+            )
             st.session_state["settings_data_management_feedback"] = (
                 "Transaction-only backup created with "
                 f"{backup['transaction_count']} transactions."
@@ -196,18 +232,24 @@ def _render_backup_section(service: DataManagementService) -> None:
 def _render_import_section(service: DataManagementService) -> None:
     """Render preview-first CSV/XLSX append import and backup restore controls."""
 
-    st.markdown("#### Import / Restore")
-    uploaded_file = st.file_uploader(
-        "Upload CSV or Excel file",
-        type=["csv", "xlsx"],
-        key="settings_import_file",
-    )
-    if st.button(
-        "Preview data",
-        key="settings_preview_import",
-        icon=":material/preview:",
-        disabled=uploaded_file is None,
-    ) and uploaded_file is not None:
+    st.markdown("#### Import data")
+    upload, preview_action = st.columns([2.4, 1], vertical_alignment="bottom")
+    with upload:
+        uploaded_file = st.file_uploader(
+            "Upload CSV or Excel file",
+            type=["csv", "xlsx"],
+            key="settings_import_file",
+        )
+        st.caption("CSV/XLSX • Max 200MB")
+    with preview_action:
+        preview_requested = st.button(
+            "Preview data",
+            key="settings_preview_import",
+            icon=":material/preview:",
+            disabled=uploaded_file is None,
+            width="stretch",
+        )
+    if preview_requested and uploaded_file is not None:
         try:
             with st.spinner("Validating import data..."):
                 preview = service.preview_import(
@@ -260,6 +302,10 @@ def _render_import_section(service: DataManagementService) -> None:
                     st.session_state.pop("settings_import_preview", None)
                     st.rerun()
 
+def _render_restore_section(service: DataManagementService) -> None:
+    """Render the transaction-only backup restore control."""
+
+    st.markdown("#### Restore backup")
     backups = service.get_backups()
     if backups:
         backup_ids = [backup["backup_id"] for backup in backups]
@@ -288,7 +334,7 @@ def _render_import_section(service: DataManagementService) -> None:
 def _render_danger_zone(service: DataManagementService) -> None:
     """Render the two-step, transaction-only reset action."""
 
-    st.markdown("#### Danger zone")
+    st.markdown("#### Danger Zone")
     st.warning(
         "Reset Transaction Data deletes Transactions only. Accounts, Account "
         "Movements, Goals, Profile data, and application settings are preserved. "
@@ -417,4 +463,16 @@ def _format_backup_label(backup: dict[str, object]) -> str:
     return (
         f"{created_at.strftime('%d %b %Y %H:%M')} "
         f"({backup['transaction_count']} transactions)"
+    )
+
+
+def _render_section_title(number: str, title: str, icon: str) -> None:
+    """Render a consistent numbered Settings section title."""
+
+    st.markdown(
+        "<div class=\"pf-settings-section-title\">"
+        f"<span class=\"material-symbols-rounded\">{icon}</span>"
+        f"<span>{number}. {title}</span>"
+        "</div>",
+        unsafe_allow_html=True,
     )

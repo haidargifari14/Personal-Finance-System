@@ -22,7 +22,10 @@ from dashboard.components.tables import (
     clear_transaction_action_state,
     transaction_management_table,
 )
-from dashboard.components.toolbar import render_transaction_toolbar
+from dashboard.components.toolbar import (
+    render_transaction_search,
+    render_transaction_toolbar,
+)
 from dashboard.utils.formatter import format_datetime
 from services.analytics_service import AnalyticsService
 from services.account_service import AccountService
@@ -34,13 +37,23 @@ from services.sheet_service import SheetService
 def render() -> None:
     """Render the Transactions workspace."""
 
-    st.title("Transactions")
-    (
-        search,
-        add_requested,
-        refresh_requested,
-        export_container,
-    ) = render_transaction_toolbar(TRANSACTION_SEARCH_KEY)
+    header_column, actions_column = st.columns([3, 2], vertical_alignment="bottom")
+    with header_column:
+        st.title("Transactions")
+        st.caption("Manage, search, and review your financial activity.")
+    with actions_column:
+        add_requested, refresh_requested, export_container = (
+            render_transaction_toolbar()
+        )
+
+    with st.container(border=False, key="transactions-search"):
+        st.markdown(
+            "<div class=\"pf-transactions-section-title\">"
+            "<span class=\"material-symbols-rounded\">search</span>"
+            "Search transactions</div>",
+            unsafe_allow_html=True,
+        )
+        search = render_transaction_search(TRANSACTION_SEARCH_KEY)
     success_messages = (
         consume_transaction_success_message(),
         consume_delete_success_message(),
@@ -63,7 +76,15 @@ def render() -> None:
                 clear_transaction_action_state()
 
             start_date, end_date = get_global_filter_values()
-            active_accounts = AccountService().list_active_accounts()
+            accounts = AccountService().list_accounts()
+            active_accounts = [
+                account
+                for account in accounts
+                if account.status.strip().lower() == "active"
+            ]
+            account_names = {
+                account.account_id: account.account_name for account in accounts
+            }
             categories = analytics.get_categories()
             transaction_filters = render_transaction_filter(categories, search)
             transactions = analytics.get_transactions(
@@ -110,11 +131,17 @@ def render() -> None:
     if export_container.open:
         _render_transaction_export(export_container, transactions)
 
-    with st.container(border=True):
-        st.subheader("Transaction Table")
+    with st.container(border=False, key="transactions-table"):
+        st.markdown(
+            "<div class=\"pf-transactions-section-title\">"
+            "<span class=\"material-symbols-rounded\">table_view</span>"
+            "Transaction Table</div>",
+            unsafe_allow_html=True,
+        )
         st.caption(f"Showing {len(transactions)} transactions")
         selected_action = transaction_management_table(
             transactions,
+            account_names=account_names,
             empty_message=_get_empty_transaction_message(transaction_filters),
         )
 
@@ -234,9 +261,19 @@ def _render_transaction_summary(summary: dict[str, object]) -> None:
     last_updated_text = (
         format_datetime(last_updated) if last_updated is not None else "-"
     )
-    with st.container(border=True):
-        st.subheader("Transaction summary")
-        with st.container(horizontal=True, vertical_alignment="center"):
-            st.write(f"**Showing:** {summary['showing']} / {summary['total']}")
-            st.write(f"**Filtered From:** {summary['filtered_from']}")
-            st.write(f"**Last Updated:** {last_updated_text}")
+    showing = int(summary["showing"])
+    filtered_from = int(summary["filtered_from"])
+    filtered_out = max(filtered_from - showing, 0)
+    filter_text = (
+        f"<span>• {filtered_out} filtered out</span>"
+        if filtered_out
+        else ""
+    )
+    st.markdown(
+        "<div class=\"pf-transactions-footer\">"
+        f"<span>Showing {showing} of {filtered_from} transactions</span>"
+        f"{filter_text}"
+        f"<span>• Last updated {last_updated_text}</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )

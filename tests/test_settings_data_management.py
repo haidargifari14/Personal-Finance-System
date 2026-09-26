@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from services.data_management_service import DataManagementService
 from services.finance_service import FinanceService
 from services.forecast_service import ForecastService
 from services.settings_service import SettingsService
+from tests.test_settings_service import FakeSettingsWorksheet
 
 
 class _FakeSheetService:
@@ -70,11 +72,13 @@ class SettingsCleanupTests(unittest.TestCase):
                 "risk_preference": "Aggressive",
             }
             path.write_text(json.dumps(legacy_payload), encoding="utf-8")
-            service = SettingsService(path)
+            worksheet = FakeSettingsWorksheet()
+            service = SettingsService(path, worksheet)
+            service.migrate_local_settings()
 
             loaded = service.load()
             service.save(UserSettings(**{**loaded.to_dict(), "name": "Updated"}))
-            persisted = json.loads(path.read_text(encoding="utf-8"))
+            persisted, _ = service._load_entries()
 
         self.assertEqual(persisted["current_balance"], 99_999_999)
         self.assertEqual(persisted["monthly_income"], 88_888_888)
@@ -138,7 +142,7 @@ class SettingsCleanupTests(unittest.TestCase):
                 json.dumps({"current_balance": 99_999_999, "monthly_income": 88_888_888}),
                 encoding="utf-8",
             )
-            SettingsService(path).load()
+            SettingsService(path, FakeSettingsWorksheet()).load()
 
             account_service = AccountService(AccountSheet())
             account = account_service.create_account(
@@ -160,7 +164,8 @@ class SettingsCleanupTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             storage_path = Path(temporary_directory) / "settings.json"
-            service = SettingsService(storage_path)
+            worksheet = FakeSettingsWorksheet()
+            service = SettingsService(storage_path, worksheet)
             service.save_saving_candidates({"Makan": True})
             service.save_monthly_spending_limit(3_000_000)
 
@@ -170,7 +175,7 @@ class SettingsCleanupTests(unittest.TestCase):
             )
             self.assertEqual(service.get_monthly_spending_limit(), 3_000_000)
             self.assertEqual(
-                SettingsService(storage_path).get_monthly_spending_limit(),
+                SettingsService(storage_path, worksheet).get_monthly_spending_limit(),
                 3_000_000,
             )
 
@@ -178,7 +183,9 @@ class SettingsCleanupTests(unittest.TestCase):
         """Local preference validation must never create a negative limit."""
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            service = SettingsService(Path(temporary_directory) / "settings.json")
+            service = SettingsService(
+                Path(temporary_directory) / "settings.json", FakeSettingsWorksheet()
+            )
             service.save_monthly_spending_limit(0)
             self.assertEqual(service.get_monthly_spending_limit(), 0)
             with self.assertRaises(ValueError):
@@ -261,27 +268,41 @@ class TransactionBackupTests(unittest.TestCase):
         self.assertEqual(restored["coverage_months"], 12)
 
     def test_invalid_backup_is_rejected_before_replacing_transactions(self) -> None:
-        """Validate transaction schema and IDs before any destructive write."""
+        """Validate in-memory backup bytes before any destructive write."""
 
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            backup_directory = Path(temporary_directory)
-            backup_id = "transactions-20260824-000000-000000"
-            (backup_directory / f"{backup_id}.json").write_text(
-                json.dumps(
-                    {
-                        "created_at": "2026-08-24T00:00:00",
-                        "transaction_count": 1,
-                        "transactions": [{"date": "not-a-date"}],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            service = DataManagementService(self.fake_sheet, backup_directory)
+        service = DataManagementService(self.fake_sheet)
+        content = json.dumps(
+            {
+                "scope": "transactions_only",
+                "excluded_datasets": ["accounts", "account_movements", "goals"],
+                "created_at": "2026-08-24T00:00:00",
+                "transaction_count": 1,
+                "transactions": [{"date": "not-a-date"}],
+            }
+        ).encode("utf-8")
 
-            with self.assertRaisesRegex(ValueError, "invalid transaction data"):
-                service.restore_backup(backup_id)
+        with self.assertRaisesRegex(ValueError, "invalid transaction data"):
+            service.restore_backup_content(content)
 
         self.assertIsNone(self.fake_sheet.replaced_transactions)
+
+    def test_backup_download_and_restore_do_not_require_a_backup_directory(self) -> None:
+        """A backup remains usable from bytes after local storage is unavailable."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            backup_directory = Path(temporary_directory) / "backups"
+            service = DataManagementService(self.fake_sheet, backup_directory)
+            backup = service.create_backup()
+            content = service.get_backup_download(backup["backup_id"])
+            self.assertFalse(backup_directory.exists())
+
+        restored_sheet = _FakeSheetService(self.transaction)
+        with patch("services.finance_service.SheetService", return_value=restored_sheet):
+            restored_count = DataManagementService(restored_sheet).restore_backup_content(
+                content
+            )
+        self.assertEqual(restored_count, 1)
+        self.assertIsNotNone(restored_sheet.replaced_transactions)
 
 
 if __name__ == "__main__":

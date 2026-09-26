@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from io import BytesIO
 
 import pandas as pd
+from config import WORKSHEET_NAME
 
 from services.data_management_service import DataManagementService
 from services.category_definitions import (
@@ -88,6 +89,18 @@ class TransactionSchemaTests(unittest.TestCase):
 
         service._ensure_transaction_schema()
         self.assertEqual(len(worksheet.rows[0]), 6)
+
+    def test_schema_migration_snapshot_is_in_memory(self) -> None:
+        """Schema safeguards capture rows without creating a backup file."""
+
+        service = object.__new__(SheetService)
+        worksheet = _FakeWorksheet()
+        service._worksheet = worksheet
+
+        snapshot = service._create_migration_snapshot()
+
+        self.assertEqual(snapshot["worksheet"], WORKSHEET_NAME)
+        self.assertEqual(snapshot["rows"], [worksheet.headers, *worksheet.rows])
 
     def test_legacy_import_generates_id_and_keeps_account_null(self) -> None:
         service = DataManagementService()

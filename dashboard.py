@@ -7,6 +7,7 @@ Entry point for the Personal Finance Dashboard.
 import streamlit as st
 
 from dashboard.components.sidebar import render_sidebar
+from dashboard.utils.theme import apply_warm_light_theme
 from services.sheet_service import SheetService
 
 from dashboard.pages import (
@@ -28,6 +29,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_warm_light_theme()
 
 # ==========================================================
 # Dashboard Routing

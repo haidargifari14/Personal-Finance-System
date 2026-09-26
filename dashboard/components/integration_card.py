@@ -11,9 +11,20 @@ from services.integration_service import IntegrationStatus
 def render_integration_card(status: IntegrationStatus, *, key: str) -> bool:
     """Render one integration status card and return a recheck request."""
 
-    with st.container(border=True):
-        st.subheader(status.name)
-        _render_status(status)
+    icon, purpose = _integration_presentation(status.name)
+    with st.container(border=True, key=f"{key}_card"):
+        heading, state = st.columns([4, 1], vertical_alignment="center")
+        with heading:
+            st.markdown(
+                "<div class=\"pf-integration-card__heading\">"
+                f"<span class=\"material-symbols-rounded\">{icon}</span>"
+                f"<span>{status.name}</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(purpose)
+        with state:
+            _render_status(status)
         for label, value in status.details.items():
             st.caption(label)
             st.write(value)
@@ -29,13 +40,26 @@ def render_integration_card(status: IntegrationStatus, *, key: str) -> bool:
         )
 
 
+def _integration_presentation(name: str) -> tuple[str, str]:
+    """Return UI-only icon and purpose copy for known integrations."""
+
+    if name == "Telegram Bot":
+        return "send", "Used for transaction input"
+    if name == "Google Sheets":
+        return "table_view", "Workbook availability and data sync"
+    return "extension", "Application integration"
+
+
 def _render_status(status: IntegrationStatus) -> None:
     """Render a clear native Streamlit status indicator."""
 
-    status_text = f"Status: {status.state}"
-    if status.state == "Connected":
-        st.success(status_text)
-    elif status.state in {"Error", "Not Configured"}:
-        st.error(status_text)
-    else:
-        st.warning(status_text)
+    semantic_state = {
+        "Connected": "connected",
+        "Error": "error",
+        "Not Configured": "error",
+    }.get(status.state, "warning")
+    st.markdown(
+        f'<span class="pf-integration-status pf-integration-status--{semantic_state}">'
+        f"{status.state}</span>",
+        unsafe_allow_html=True,
+    )

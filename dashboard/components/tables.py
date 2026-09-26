@@ -5,7 +5,7 @@ Reusable table components for the
 Personal Finance Dashboard.
 """
 
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 import streamlit as st
@@ -14,14 +14,26 @@ from dashboard.utils.formatter import format_currency, format_date
 from dashboard.utils.theme import TABLE_HEIGHT
 
 TRANSACTION_COLUMNS = ["date", "category", "type", "amount", "note"]
-MANAGEMENT_TRANSACTION_COLUMNS = [*TRANSACTION_COLUMNS, "action"]
+MANAGEMENT_TRANSACTION_COLUMNS = [
+    "date",
+    "category",
+    "type",
+    "account",
+    "amount",
+    "note",
+    "action",
+]
 TRANSACTION_TYPE_LABELS = {
     "income": "Income",
     "expense": "Expense",
 }
+OVERVIEW_TRANSACTION_TYPE_LABELS = {
+    "income": "● Income",
+    "expense": "● Expense",
+}
 TRANSACTION_TYPE_BADGES = {
-    "Income": "\U0001F7E2 Income",
-    "Expense": "\U0001F534 Expense",
+    "Income": "● Income",
+    "Expense": "● Expense",
 }
 ACTION_OPTIONS = ["View", "Edit", "Delete"]
 TRANSACTION_ACTION_KEY = "transaction_table_action"
@@ -54,17 +66,23 @@ def transaction_table(
         empty_table("Belum ada transaksi untuk filter yang dipilih.")
         return
 
-    display_data = _format_transaction_data(data)
+    display_data = _format_transaction_data(data, decorate_type=True)
 
     st.dataframe(
         display_data,
         width="stretch",
         hide_index=True,
+        height="auto",
+        row_height=34,
         column_config={
-            "date": st.column_config.TextColumn("Date", width="medium"),
+            "date": st.column_config.TextColumn("Date", width="small"),
             "category": st.column_config.TextColumn("Category", width="medium"),
             "type": st.column_config.TextColumn("Type", width="small"),
-            "amount": st.column_config.TextColumn("Amount", width="medium"),
+            "amount": st.column_config.TextColumn(
+                "Amount",
+                width="medium",
+                alignment="right",
+            ),
             "note": st.column_config.TextColumn("Note", width="large"),
         },
     )
@@ -73,6 +91,7 @@ def transaction_table(
 def transaction_management_table(
     data: pd.DataFrame,
     *,
+    account_names: Mapping[str, str] | None = None,
     empty_message: str = "No transactions found for the selected filters.",
 ) -> dict[str, Any] | None:
     """Display transactions and return the selected row action, if any."""
@@ -81,7 +100,11 @@ def transaction_management_table(
         empty_table(empty_message)
         return None
 
-    display_data = _format_transaction_data(data)
+    display_data = _format_transaction_data(
+        data,
+        account_names=account_names,
+        include_account=True,
+    )
     display_data["type"] = display_data["type"].replace(
         TRANSACTION_TYPE_BADGES
     )
@@ -93,10 +116,15 @@ def transaction_management_table(
         width="stretch",
         hide_index=True,
         column_config={
-            "date": st.column_config.TextColumn("Date", width="medium"),
+            "date": st.column_config.TextColumn("Date", width="small"),
             "category": st.column_config.TextColumn("Category", width="medium"),
             "type": st.column_config.TextColumn("Type", width="small"),
-            "amount": st.column_config.TextColumn("Amount", width="medium"),
+            "account": st.column_config.TextColumn("Account", width="medium"),
+            "amount": st.column_config.TextColumn(
+                "Amount",
+                width="medium",
+                alignment="right",
+            ),
             "note": st.column_config.TextColumn("Note", width="large"),
             "action": st.column_config.ButtonColumn(
                 "Action",
@@ -124,7 +152,42 @@ def transaction_management_table(
     }
 
 
-def _format_transaction_data(data: pd.DataFrame) -> pd.DataFrame:
+def category_transaction_table(data: pd.DataFrame) -> None:
+    """Render selected-category transaction evidence with compact fields."""
+
+    if data.empty:
+        empty_table("Belum ada transaksi untuk kategori yang dipilih.")
+        return
+
+    display_data = _format_transaction_data(data)
+    evidence_columns = [
+        column for column in ("date", "amount", "note") if column in display_data
+    ]
+    st.dataframe(
+        display_data[evidence_columns],
+        width="stretch",
+        hide_index=True,
+        height="auto",
+        row_height=32,
+        column_config={
+            "date": st.column_config.TextColumn("Date", width="medium"),
+            "amount": st.column_config.TextColumn(
+                "Amount",
+                width="medium",
+                alignment="right",
+            ),
+            "note": st.column_config.TextColumn("Note", width="large"),
+        },
+    )
+
+
+def _format_transaction_data(
+    data: pd.DataFrame,
+    *,
+    decorate_type: bool = False,
+    account_names: Mapping[str, str] | None = None,
+    include_account: bool = False,
+) -> pd.DataFrame:
     """Return transaction data formatted for the dashboard table."""
 
     display_data = data.copy()
@@ -136,21 +199,33 @@ def _format_transaction_data(data: pd.DataFrame) -> pd.DataFrame:
         )
 
     if "type" in display_data:
-        display_data["type"] = display_data["type"].replace(
-            TRANSACTION_TYPE_LABELS
+        labels = (
+            OVERVIEW_TRANSACTION_TYPE_LABELS
+            if decorate_type
+            else TRANSACTION_TYPE_LABELS
         )
+        display_data["type"] = display_data["type"].replace(labels)
 
     if "amount" in display_data:
         display_data["amount"] = display_data["amount"].apply(format_currency)
+
+    if "account_id" in display_data:
+        account_lookup = account_names or {}
+        display_data["account"] = display_data["account_id"].apply(
+            lambda account_id: account_lookup.get(str(account_id or "").strip(), "—")
+        )
+    elif "account" not in display_data:
+        display_data["account"] = "—"
 
     if "note" in display_data:
         display_data["note"] = (
             display_data["note"].fillna("").astype(str).str.strip().replace("", "-")
         )
 
-    available_columns = [
-        column for column in TRANSACTION_COLUMNS if column in display_data
-    ]
+    column_order = TRANSACTION_COLUMNS.copy()
+    if include_account:
+        column_order.insert(3, "account")
+    available_columns = [column for column in column_order if column in display_data]
     return display_data[available_columns]
 
 

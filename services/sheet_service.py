@@ -9,18 +9,17 @@ Business logic must NOT be implemented here.
 
 from __future__ import annotations
 
-import json
 import copy
 import logging
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
 
 import gspread
 import pandas as pd
-from google.oauth2.service_account import Credentials
+
+from services.google_credentials import get_google_credentials
 
 from config import (
     ACCOUNTS_WORKSHEET_NAME,
@@ -58,11 +57,6 @@ from services.transaction_schema import (
     sheet_record_to_transaction,
 )
 
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -108,10 +102,7 @@ class SheetService:
         with self._cache_lock:
             resources = self._shared_resources
             if resources is None:
-                creds = Credentials.from_service_account_file(
-                    "credentials.json",
-                    scopes=SCOPES,
-                )
+                creds = get_google_credentials()
                 client = gspread.authorize(creds)
                 spreadsheet = client.open(SPREADSHEET_NAME)
                 self._spreadsheet = spreadsheet
@@ -696,20 +687,14 @@ class SheetService:
                 return int(goal["row_number"])
         raise ValueError("Goal was not found.")
 
-    def _create_migration_snapshot(self) -> None:
-        """Create a local pre-migration snapshot before changing sheet columns."""
+    def _create_migration_snapshot(self) -> dict[str, Any]:
+        """Capture a pre-migration snapshot in memory for this operation only."""
 
-        root = Path(__file__).resolve().parents[1]
-        backup_directory = root / "data" / "backups"
-        backup_directory.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        backup_path = backup_directory / f"schema-migration-{timestamp}.json"
-        payload = {
+        return {
             "created_at": datetime.now().isoformat(),
             "worksheet": WORKSHEET_NAME,
             "rows": self._worksheet.get_all_values(),
         }
-        backup_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     @staticmethod
     def _migration_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:

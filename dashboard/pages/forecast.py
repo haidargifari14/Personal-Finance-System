@@ -23,6 +23,7 @@ def render() -> None:
     """Render Forecast V2 through ForecastService without direct Sheets access."""
 
     st.title("Forecast")
+    st.caption("Project your spending, monitor risks, and plan ahead with confidence.")
     service = ForecastService()
     try:
         with st.spinner("Loading expense forecast..."):
@@ -49,15 +50,19 @@ def render() -> None:
 
     _render_expense_forecast_detail(expense_forecast)
     goal_forecast = _render_goal_forecast(service)
-    saving_candidates = _render_saving_candidate_preferences(expense_forecast)
+    saving_candidate_categories, saving_candidates = _get_saving_candidate_preferences(
+        expense_forecast
+    )
     _render_recommendation(
         outlook,
         expense_forecast,
         goal_forecast,
         saving_candidates,
         spending_limit_status,
+        saving_candidate_categories,
     )
-    render_scenario_simulator(outlook, goal_forecast)
+    with st.container(border=False, key="forecast-scenario"):
+        render_scenario_simulator(outlook, goal_forecast)
 
 
 def _render_expense_forecast_detail(
@@ -67,37 +72,40 @@ def _render_expense_forecast_detail(
 
     forecastable_categories = expense_forecast["forecastable_categories"]
     labels = [str(item["category"]) for item in forecastable_categories]
-    st.subheader("Expense Forecast Detail")
-    if not labels:
-        st.info("No expense category has enough data for a safe basic forecast.")
+    with st.container(border=False, key="forecast-expense"):
+        st.markdown(
+            "<div class=\"pf-forecast-section-title\">"
+            "<span class=\"material-symbols-rounded\">receipt_long</span>"
+            "2. Expense Forecast</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption("Inspect category-level forecasts based on available spending history.")
+        if not labels:
+            st.info("No expense category has enough data for a safe basic forecast.")
+            render_forecast_data_notes(
+                expense_forecast["limited_forecast_categories"],
+                expense_forecast["insufficient_forecast_categories"],
+            )
+            return
+
+        _render_forecast_category_groups(expense_forecast)
+        selected_categories = st.multiselect(
+            "Categories to inspect",
+            options=labels,
+            default=_valid_selected_categories(labels),
+            key="forecast_selected_categories",
+            help="Controls only these detail cards; global outlook remains unchanged.",
+        )
+        forecasts_by_category = {
+            str(item["category"]): item for item in forecastable_categories
+        }
+        render_selected_expense_forecasts(
+            [forecasts_by_category[category] for category in selected_categories]
+        )
         render_forecast_data_notes(
             expense_forecast["limited_forecast_categories"],
             expense_forecast["insufficient_forecast_categories"],
         )
-        return
-
-    st.caption(
-        "Categories to inspect control only the detail cards below. They do not "
-        "change Financial Outlook, risk, Recommendation, or Scenario baseline."
-    )
-    _render_forecast_category_groups(expense_forecast)
-    selected_categories = st.multiselect(
-        "Categories to inspect",
-        options=labels,
-        default=_valid_selected_categories(labels),
-        key="forecast_selected_categories",
-        help="This selection is presentation-only; global calculations remain unchanged.",
-    )
-    forecasts_by_category = {
-        str(item["category"]): item for item in forecastable_categories
-    }
-    render_selected_expense_forecasts(
-        [forecasts_by_category[category] for category in selected_categories]
-    )
-    render_forecast_data_notes(
-        expense_forecast["limited_forecast_categories"],
-        expense_forecast["insufficient_forecast_categories"],
-    )
 
 
 def _render_goal_forecast(service: ForecastService) -> dict[str, object]:
@@ -109,19 +117,29 @@ def _render_goal_forecast(service: ForecastService) -> dict[str, object]:
     except Exception:
         st.error("Unable to load Goal Forecast. Please try again.")
         return {"goals": []}
-    render_goal_forecast(result)
+    with st.container(border=False, key="forecast-goals"):
+        render_goal_forecast(result)
     return result
 
 
-def _render_saving_candidate_preferences(
+def _get_saving_candidate_preferences(
     expense_forecast: dict[str, object],
-) -> dict[str, bool]:
-    """Render and persist the explicit user-owned Saving Candidate preference."""
+) -> tuple[list[dict[str, object]], dict[str, bool]]:
+    """Load Saving Candidate preferences without rendering configuration early."""
 
     settings_service = SettingsService()
     categories = _saving_candidate_categories(expense_forecast)
     category_names = [str(item["category"]) for item in categories]
     preferences = settings_service.get_saving_candidates(category_names)
+    return categories, preferences
+
+
+def _save_saving_candidate_preferences(
+    categories: list[dict[str, object]],
+    preferences: dict[str, bool],
+) -> dict[str, bool]:
+    """Render configuration inside Recommendation and persist only on submit."""
+
     submitted = render_saving_candidate_form(categories, preferences)
     if submitted is None:
         return preferences
@@ -186,6 +204,7 @@ def _render_recommendation(
     goal_forecast: dict[str, object],
     saving_candidates: dict[str, bool],
     spending_limit_status: dict[str, object],
+    saving_candidate_categories: list[dict[str, object]],
 ) -> None:
     """Generate non-persistent recommendations from already loaded forecasts."""
 
@@ -201,10 +220,15 @@ def _render_recommendation(
     except Exception:
         st.error("Unable to prepare recommendations. Please try again.")
         return
-    if render_recommendations(result):
-        st.session_state["forecast_scenario_handoff"] = result["scenario_handoff"]
-        st.session_state.pop("scenario_handoff_applied", None)
-        st.success("Recommendation inputs are ready in Scenario Simulator below.")
+    with st.container(border=False, key="forecast-recommendation"):
+        if render_recommendations(result):
+            st.session_state["forecast_scenario_handoff"] = result["scenario_handoff"]
+            st.session_state.pop("scenario_handoff_applied", None)
+            st.success("Recommendation inputs are ready in Scenario Simulator below.")
+        _save_saving_candidate_preferences(
+            saving_candidate_categories,
+            saving_candidates,
+        )
 
 
 def _valid_selected_categories(eligible_categories: list[str]) -> list[str]:

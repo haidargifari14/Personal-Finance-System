@@ -1,92 +1,81 @@
-"""Reusable Financial Statistics cards for the Analytics page."""
+"""Compact Financial Statistics cards for the Analytics page."""
 
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
-from dashboard.components.metric_cards import metric_card
-from dashboard.utils.formatter import format_currency, format_percent
+from dashboard.components.icons import material_icon
+from dashboard.utils.formatter import format_currency
 
 
 def render_financial_statistics(
     statistics: dict[str, int | float | None],
 ) -> None:
-    """Render service-provided Financial Statistics in grouped metric cards."""
+    """Render the four approved service-provided Analytics statistics.
+
+    Args:
+        statistics: Already-calculated values returned by ``AnalyticsService``.
+    """
 
     if statistics["transaction_count"] == 0:
         st.info("Belum ada transaksi untuk menampilkan statistik keuangan.")
         return
 
-    st.markdown("**Income**")
-    with st.container(horizontal=True):
-        _statistic_card(
-            "Average income",
-            statistics["average_income"],
-            "Belum ada transaksi income.",
-        )
-        _statistic_card(
-            "Largest income",
-            statistics["largest_income"],
-            "Belum ada transaksi income.",
-        )
-
-    st.markdown("**Expense**")
-    with st.container(horizontal=True):
-        _statistic_card(
-            "Average expense",
-            statistics["average_expense"],
-            "Belum ada transaksi expense.",
-        )
-        _statistic_card(
+    cards = (
+        (
+            "Income",
+            _format_currency(statistics["income"]),
+            "income",
+            "south",
+            "Active period",
+        ),
+        (
+            "Expense this period",
+            _format_currency(statistics["expense"]),
+            "expense-period",
+            "monitor_heart",
+            "Active period",
+        ),
+        (
             "Largest expense",
-            statistics["largest_expense"],
-            "Belum ada transaksi expense.",
-        )
+            _format_currency(statistics["largest_expense"]),
+            "largest-expense",
+            "north",
+            "Active period",
+        ),
+        (
+            "Total transactions",
+            str(statistics["transaction_count"]),
+            "transactions",
+            "receipt_long",
+            "Active period",
+        ),
+    )
 
-    st.markdown("**General**")
-    with st.container(horizontal=True):
-        _statistic_card(
-            "Average saving",
-            statistics["average_saving"],
-            "Belum ada transaksi untuk menghitung saving.",
-        )
-        _ratio_card(statistics["expense_income_ratio"])
-        _statistic_card(
-            "Average transaction value",
-            statistics["average_transaction_value"],
-            "Belum ada transaksi.",
-        )
-        metric_card("Total transactions", str(statistics["transaction_count"]))
-
-
-def _statistic_card(title: str, value: int | float | None, empty_text: str) -> None:
-    """Render a currency statistic card or an explicit unavailable state."""
-
-    if value is None:
-        metric_card(title, "—", help_text=empty_text)
-        return
-
-    metric_card(title, _format_signed_currency(value))
-
-
-def _ratio_card(value: int | float | None) -> None:
-    """Render the safe Expense-to-Income ratio card."""
-
-    if value is None:
-        metric_card(
-            "Expense / income ratio",
-            "—",
-            help_text="Rasio tersedia setelah ada transaksi income.",
-        )
-        return
-
-    metric_card("Expense / income ratio", format_percent(value))
+    columns = st.columns(4)
+    for column, (title, value, variant, icon, metadata) in zip(columns, cards):
+        with column:
+            st.markdown(
+                "<div class=\"pf-analytics-stat pf-analytics-stat--{variant}\">"
+                "<div class=\"pf-analytics-stat__topline\">"
+                "<span class=\"pf-analytics-stat__icon\">{icon}</span>"
+                "<div class=\"pf-analytics-stat__label\">{title}</div></div>"
+                "<div class=\"pf-analytics-stat__value\">{value}</div>"
+                "<div class=\"pf-analytics-stat__meta\">{metadata}</div>"
+                "</div>".format(
+                    title=escape(title),
+                    value=escape(value),
+                    variant=escape(variant),
+                    icon=material_icon(icon),
+                    metadata=escape(metadata),
+                ),
+                unsafe_allow_html=True,
+            )
 
 
-def _format_signed_currency(value: int | float) -> str:
-    """Format negative amounts with a leading minus sign before Rupiah."""
+def _format_currency(value: int | float | None) -> str:
+    """Format an optional service value without changing its meaning."""
 
-    if value < 0:
-        return f"-{format_currency(abs(value))}"
-
-    return format_currency(value)
+    return "—" if value is None else format_currency(value)

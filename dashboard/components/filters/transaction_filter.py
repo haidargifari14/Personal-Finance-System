@@ -49,27 +49,40 @@ def render_transaction_filter(
     available_categories = categories or ["All"]
     _initialize_transaction_filter_state(available_categories)
 
-    with st.container(border=True):
-        with st.container(horizontal=True, vertical_alignment="center"):
-            st.subheader("Advanced filters")
+    with st.container(border=False, key="transactions-filters"):
+        title_column, reset_column = st.columns([5, 1])
+        with title_column:
+            st.markdown(
+                "<div class=\"pf-transactions-section-title\">"
+                "<span class=\"material-symbols-rounded\">filter_alt</span>"
+                "Advanced filters</div>",
+                unsafe_allow_html=True,
+            )
+        with reset_column:
             st.button(
                 "Reset filters",
                 icon=":material/filter_alt_off:",
                 on_click=reset_transaction_filters,
+                key="transactions_reset_filters",
+                width="stretch",
             )
-        with st.container(horizontal=True, vertical_alignment="bottom"):
+
+        category_column, type_column, minimum_column, maximum_column = st.columns(4)
+        with category_column:
             category = st.selectbox(
                 "Category",
                 options=available_categories,
                 key=TRANSACTION_CATEGORY_KEY,
                 persist_state="session",
             )
+        with type_column:
             transaction_type = st.selectbox(
                 "Transaction type",
                 options=TRANSACTION_TYPE_OPTIONS,
                 key=TRANSACTION_TYPE_KEY,
                 persist_state="session",
             )
+        with minimum_column:
             minimum_amount = st.number_input(
                 "Minimum amount",
                 min_value=0,
@@ -79,6 +92,7 @@ def render_transaction_filter(
                 key=TRANSACTION_MIN_AMOUNT_KEY,
                 persist_state="session",
             )
+        with maximum_column:
             maximum_amount = st.number_input(
                 "Maximum amount",
                 min_value=0,
@@ -89,13 +103,15 @@ def render_transaction_filter(
                 persist_state="session",
             )
 
-        with st.container(horizontal=True, vertical_alignment="bottom"):
+        sort_column, order_column, _ = st.columns([1, 1, 2])
+        with sort_column:
             sort_by = st.selectbox(
                 "Sort by",
                 options=SORT_BY_OPTIONS,
                 key=TRANSACTION_SORT_BY_KEY,
                 persist_state="session",
             )
+        with order_column:
             sort_order = st.selectbox(
                 "Order",
                 options=SORT_ORDER_OPTIONS,

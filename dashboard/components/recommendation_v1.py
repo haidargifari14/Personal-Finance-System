@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import Mapping, Sequence
 
 import streamlit as st
@@ -12,63 +13,97 @@ from dashboard.utils.formatter import format_currency
 def render_recommendations(result: Mapping[str, object]) -> bool:
     """Render explainable recommendations and return a Try Scenario request."""
 
-    st.subheader("Recommendation")
-    limit_status = result["spending_limit_status"]
-    first, second = st.columns(2)
-    first.metric(
-        "Saving Candidates Analyzed",
-        str(len(result["candidate_analysis"])),
+    st.markdown(
+        "<div class=\"pf-forecast-section-title\">"
+        "<span class=\"material-symbols-rounded\">lightbulb</span>"
+        "4. Recommendation</div>",
+        unsafe_allow_html=True,
     )
-    second.metric(
-        "Total Potential Saving",
-        format_currency(int(result["potential_saving"])),
-    )
-    if bool(result["balance_risk"]):
-        st.warning(
-            "Financial Outlook reports a Balance Risk. The actions below show "
-            "whether realistic savings can reduce its gap.",
-            icon="⚠️",
+    st.caption("Spending insights and saving opportunities.")
+    _render_recommendation_message(result)
+
+    potential_saving = int(result["potential_saving"])
+    spending_gap = int(result["spending_limit_gap"])
+    remaining_gap = int(result["remaining_spending_limit_gap"])
+    first, second, third, fourth = st.columns(4)
+    with first:
+        _render_recommendation_metric(
+            (
+                "forecast-recommendation-saving-positive"
+                if potential_saving > 0
+                else "forecast-recommendation-saving-neutral"
+            ),
+            "Potential Saving",
+            format_currency(potential_saving),
         )
-    if bool(result["spending_risk"]):
-        st.warning(
-            "Financial Outlook reports a Spending Risk. Recommendation does not "
-            "recalculate that status.",
-            icon="⚠️",
+    with second:
+        _render_recommendation_metric(
+            (
+                "forecast-recommendation-gap-risk"
+                if spending_gap > 0
+                else "forecast-recommendation-gap-healthy"
+            ),
+            "Spending Gap",
+            format_currency(spending_gap),
         )
-    if bool(result["balance_risk"]):
-        first, second = st.columns(2)
-        first.metric(
-            "Balance Shortfall",
-            format_currency(int(result["balance_shortfall"])),
+    with third:
+        _render_recommendation_metric(
+            (
+                "forecast-recommendation-remaining-gap-risk"
+                if remaining_gap > 0
+                else "forecast-recommendation-remaining-gap-healthy"
+            ),
+            "Remaining Gap",
+            format_currency(remaining_gap),
         )
-        second.metric(
-            "Remaining Balance Shortfall",
-            format_currency(int(result["remaining_balance_shortfall"])),
+    with fourth:
+        _render_recommendation_metric(
+            "forecast-recommendation-candidates",
+            "Candidates Analyzed",
+            str(len(result["candidate_analysis"])),
         )
-    if bool(result["spending_risk"]):
-        first, second = st.columns(2)
-        first.metric(
-            "Spending Limit Gap",
-            format_currency(int(result["spending_limit_gap"])),
-        )
-        second.metric(
-            "Remaining Spending Limit Gap",
-            format_currency(int(result["remaining_spending_limit_gap"])),
-        )
-    st.info(str(result["message"]))
+
     _render_expected_impact(result)
-    _render_candidate_analysis(result["candidate_analysis"])
-    _render_category_recommendations(result["category_recommendations"])
-    _render_goal_recommendations(result["goal_recommendations"])
+    with st.expander("Candidate Details", expanded=False):
+        _render_candidate_analysis(result["candidate_analysis"])
+        _render_category_recommendations(result["category_recommendations"])
+        _render_goal_recommendations(result["goal_recommendations"])
     if not result["category_recommendations"] and not result["goal_recommendations"]:
-        if int(result["potential_saving"]) == 0:
-            st.info("No realistic spending optimization opportunity detected.")
         return False
-    st.caption(
-        "Recommendations are analytical only. They do not create transactions "
-        "or change Account, movement, or Goal data."
+    return st.button(
+        "Try Scenario",
+        key="forecast_try_recommendation_scenario",
+        icon=":material/tune:",
+        type="primary",
     )
-    return st.button("Try Scenario", key="forecast_try_recommendation_scenario")
+
+
+def _render_recommendation_message(result: Mapping[str, object]) -> None:
+    """Render the single service-owned recommendation conclusion warmly."""
+
+    potential_saving = int(result["potential_saving"])
+    spending_gap = int(result["spending_limit_gap"])
+    if potential_saving > 0:
+        tone = "positive"
+    elif spending_gap > 0:
+        tone = "warning"
+    else:
+        tone = "neutral"
+    message = escape(str(result["message"]))
+    st.markdown(
+        "<div class=\"pf-forecast-recommendation-message "
+        f"pf-forecast-recommendation-message--{tone}\">"
+        "<span class=\"material-symbols-rounded\">lightbulb</span>"
+        f"<span>{message}</span></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_recommendation_metric(key: str, label: str, value: str) -> None:
+    """Render one visually semantic Recommendation metric."""
+
+    with st.container(border=False, key=key):
+        st.metric(label, value)
 
 
 def _render_expected_impact(result: Mapping[str, object]) -> None:
@@ -93,35 +128,49 @@ def _render_candidate_analysis(
     if not candidates:
         st.caption("No Saving Candidate is currently enabled.")
         return
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
+        presentation = _baseline_presentation(
+            candidate.get("optimization_baseline_type")
+        )
         with st.container(border=True):
-            st.markdown(f"**{candidate['category']}**")
+            _render_candidate_heading(candidate, presentation)
             if candidate["analysis_status"] != "ready":
                 reasons = "; ".join(candidate["optimization_history_reasons"])
-                st.caption(
-                    "Saving Candidate: ON · Insufficient optimization history. "
-                    f"{reasons}"
+                st.markdown(
+                    "<div class=\"pf-recommendation-baseline-helper\">"
+                    "Not enough spending history to estimate a reliable saving "
+                    "opportunity."
+                    "</div>",
+                    unsafe_allow_html=True,
                 )
+                if reasons:
+                    st.caption(reasons)
                 continue
-            st.caption(
-                f"Baseline Type: {_baseline_type_label(candidate['optimization_baseline_type'])}"
-            )
             first, second, third = st.columns(3)
             first.metric(
-                "Normalized comparable spending",
+                presentation["current_label"],
                 format_currency(int(candidate["current_comparable_spending"])),
             )
             second.metric(
-                "Historical Normal",
+                presentation["baseline_label"],
                 format_currency(
                     int(candidate["historical_normal_comparable_spending"])
                 ),
             )
-            third.metric(
-                "Detected Excess",
-                format_currency(max(int(candidate["optimization_excess"]), 0)),
-            )
             capacity = int(candidate["saving_capacity"])
+            with third:
+                tone = "positive" if capacity > 0 else "neutral"
+                with st.container(
+                    border=False,
+                    key=f"forecast-candidate-saving-{tone}-{index}",
+                ):
+                    st.metric("Potential Saving", format_currency(capacity))
+            st.markdown(
+                "<div class=\"pf-recommendation-baseline-helper\">"
+                f"{presentation['helper']}"
+                "</div>",
+                unsafe_allow_html=True,
+            )
             if capacity > 0:
                 st.caption(
                     f"Potential saving: {format_currency(capacity)} over "
@@ -131,12 +180,60 @@ def _render_candidate_analysis(
                 st.caption("No reduction opportunity detected for this period.")
 
 
-def _baseline_type_label(baseline_type: object) -> str:
-    """Return a concise explainability label for a service-owned baseline."""
+def _render_candidate_heading(
+    candidate: Mapping[str, object],
+    presentation: Mapping[str, str],
+) -> None:
+    """Render a category name with its user-facing baseline status."""
 
+    category = escape(str(candidate["category"]))
+    st.markdown(
+        "<div class=\"pf-recommendation-candidate-heading\">"
+        f"<strong>{category}</strong>"
+        f"<span class=\"pf-baseline-badge {presentation['badge_class']}\" "
+        f"title=\"{escape(presentation['tooltip'])}\">"
+        f"{presentation['badge_label']}"
+        "</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _baseline_presentation(baseline_type: object) -> dict[str, str]:
+    """Return presentation-only copy for one service-owned baseline type."""
+
+    if baseline_type == "historical":
+        return {
+            "badge_label": "Historical Baseline",
+            "badge_class": "pf-baseline-badge--historical",
+            "tooltip": "Uses regular spending history from before the current period.",
+            "current_label": "Current Regular Spending",
+            "baseline_label": "Typical Historical Spending",
+            "helper": "Historical data is available and used as the comparison baseline.",
+        }
     if baseline_type == "limited_current_period":
-        return "Limited Optimization Baseline"
-    return "Historical Baseline"
+        return {
+            "badge_label": "Limited Baseline",
+            "badge_class": "pf-baseline-badge--limited",
+            "tooltip": (
+                "Historical data is unavailable, so recent spending is compared "
+                "with the earlier part of the current period."
+            ),
+            "current_label": "Recent Regular Spending",
+            "baseline_label": "Early-Period Baseline",
+            "helper": (
+                "Historical data is not available yet. The comparison uses spending "
+                "pace from the earlier part of the current period."
+            ),
+        }
+    return {
+        "badge_label": "Insufficient Data",
+        "badge_class": "pf-baseline-badge--insufficient",
+        "tooltip": "Not enough data is available for a reliable comparison.",
+        "current_label": "",
+        "baseline_label": "",
+        "helper": "Not enough data is available for a reliable comparison.",
+    }
 
 
 def _render_category_recommendations(
@@ -148,15 +245,18 @@ def _render_category_recommendations(
         return
     st.markdown("**Suggested category reductions**")
     for item in recommendations:
+        presentation = _baseline_presentation(
+            item.get("optimization_baseline_type")
+        )
         with st.container(border=True):
-            st.markdown(f"**{item['category']}**")
+            _render_candidate_heading(item, presentation)
             first, second, third = st.columns(3)
             first.metric(
-                "Current Spending",
+                presentation["current_label"],
                 format_currency(int(item["current_comparable_spending"])),
             )
             second.metric(
-                "Historical Normal",
+                presentation["baseline_label"],
                 format_currency(
                     int(item["historical_normal_comparable_spending"])
                 ),

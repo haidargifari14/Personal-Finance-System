@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aiogram import Bot, Dispatcher
 
@@ -8,6 +9,9 @@ from handlers.finance import router as finance_router
 from handlers.income import router as income_router
 from handlers.report import router as report_router
 from handlers.start import router as start_router
+
+
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
@@ -23,8 +27,15 @@ async def main() -> None:
         finance_router,
         report_router,
     )
-    await dispatcher.start_polling(bot)
+    logger.info(
+        "Starting Telegram polling; deployment must run exactly one worker instance."
+    )
+    try:
+        await dispatcher.start_polling(bot, close_bot_session=False)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

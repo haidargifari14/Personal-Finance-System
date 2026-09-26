@@ -11,19 +11,19 @@ consistent and easy to maintain.
 # Color Palette
 # ==========================================================
 
-PRIMARY_COLOR = "#3B82F6"      # Blue
-SUCCESS_COLOR = "#22C55E"      # Green
-WARNING_COLOR = "#F59E0B"      # Orange
-DANGER_COLOR = "#EF4444"       # Red
-INFO_COLOR = "#06B6D4"         # Cyan
+PRIMARY_COLOR = "#D97742"      # Terracotta
+SUCCESS_COLOR = "#37A86B"      # Sage green
+WARNING_COLOR = "#D89A35"      # Warm amber
+DANGER_COLOR = "#D85C59"       # Muted coral red
+INFO_COLOR = "#6B8FC7"         # Dusty blue
 
-BACKGROUND_COLOR = "#0E1117"
-SURFACE_COLOR = "#1E1E1E"
+BACKGROUND_COLOR = "#F7F0E8"
+SURFACE_COLOR = "#FCF8F3"
 
-TEXT_PRIMARY = "#FAFAFA"
-TEXT_SECONDARY = "#A1A1AA"
+TEXT_PRIMARY = "#332621"
+TEXT_SECONDARY = "#806F66"
 
-BORDER_COLOR = "#2D2D2D"
+BORDER_COLOR = "#E1CFC1"
 
 
 # ==========================================================
@@ -45,16 +45,16 @@ SIDEBAR_WIDTH = 280
 # Chart
 # ==========================================================
 
-CHART_HEIGHT = 400
+CHART_HEIGHT = 320
 
-PIE_CHART_HEIGHT = 380
+PIE_CHART_HEIGHT = 240
 
 
 # ==========================================================
 # Table
 # ==========================================================
 
-TABLE_HEIGHT = 500
+TABLE_HEIGHT = 420
 
 
 # ==========================================================
@@ -80,3 +80,17 @@ CURRENCY_SYMBOL = "Rp"
 # ==========================================================
 
 DEFAULT_DATE_FORMAT = "%d %b %Y"
+
+
+def apply_warm_light_theme() -> None:
+    """Inject the shared warm-light visual treatment for the dashboard."""
+
+    from pathlib import Path
+
+    import streamlit as st
+
+    stylesheet = Path(__file__).parents[1] / "assets" / "style.css"
+    st.markdown(
+        f"<style>{stylesheet.read_text(encoding='utf-8')}</style>",
+        unsafe_allow_html=True,
+    )

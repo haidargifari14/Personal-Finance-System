@@ -7,14 +7,18 @@ Personal Finance Dashboard.
 
 from __future__ import annotations
 
+from html import escape
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard.utils.formatter import format_currency
 from dashboard.utils.theme import (
     CHART_HEIGHT,
     DANGER_COLOR,
+    PIE_CHART_HEIGHT,
     PRIMARY_COLOR,
     SUCCESS_COLOR,
 )
@@ -29,6 +33,7 @@ TRANSACTION_COLORS = {
     "income": INCOME_COLOR,
     "expense": EXPENSE_COLOR,
 }
+CATEGORY_COLORS = ("#75ADEF", "#F36B93", "#FDB549", "#E86A63", "#4BB980", "#A991E1")
 
 
 # =====================================================
@@ -39,6 +44,7 @@ def _apply_layout(fig):
     """Apply the shared visual style for dashboard charts."""
 
     fig.update_layout(
+        template="plotly_white",
         height=CHART_HEIGHT,
         margin=dict(
             l=8,
@@ -54,7 +60,15 @@ def _apply_layout(fig):
             y=1.02,
             yanchor="bottom",
         ),
-        hoverlabel=dict(namelength=-1),
+        hoverlabel=dict(
+            bgcolor="#FFFDFB",
+            bordercolor="#E8DBD1",
+            font=dict(color="#332621", family="Inter, Arial, sans-serif"),
+            namelength=-1,
+        ),
+        font=dict(color="#5F4D44", family="Inter, Arial, sans-serif"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         separators=",.",
     )
 
@@ -69,6 +83,8 @@ def _apply_currency_axis(fig) -> None:
         tickprefix="Rp ",
         tickformat=",.0f",
         showgrid=True,
+        gridcolor="#EFE6DE",
+        tickfont=dict(color="#9A887E", size=10),
         zeroline=False,
     )
 
@@ -193,25 +209,69 @@ def income_vs_expense_chart(
 
 
 def expense_by_category_chart(data: pd.DataFrame) -> None:
-    """Render expense totals grouped by category as a pie chart."""
+    """Render expense totals as a compact donut and readable category legend."""
 
     if data.empty:
         empty_chart("Belum ada data pengeluaran untuk filter yang dipilih.")
         return
 
+    total_expense = int(data["amount"].sum())
     fig = px.pie(
         data_frame=data,
         names="category",
         values="amount",
+        color_discrete_sequence=CATEGORY_COLORS,
+        hole=0.66,
     )
     fig.update_traces(
-        textposition="inside",
-        textinfo="percent+label",
+        textinfo="none",
         hovertemplate="%{label}<br>Rp%{value:,.0f}<br>%{percent}<extra></extra>",
     )
-    _apply_layout(fig)
+    fig.add_annotation(
+        text=(
+            "<span style='font-size:11px;color:#806F66'>Total Expense</span><br>"
+            f"<b>{format_currency(total_expense)}</b>"
+        ),
+        showarrow=False,
+        font=dict(color="#332621", size=13),
+    )
+    fig.update_layout(
+        template="plotly_white",
+        height=PIE_CHART_HEIGHT,
+        margin=dict(l=0, r=0, t=0, b=0),
+        showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#5F4D44", family="Inter, Arial, sans-serif"),
+        hoverlabel=dict(
+            bgcolor="#FFFDFB",
+            bordercolor="#E8DBD1",
+            font=dict(color="#332621", family="Inter, Arial, sans-serif"),
+        ),
+    )
 
-    st.plotly_chart(fig, width="stretch")
+    chart_column, legend_column = st.columns([0.82, 1.35], vertical_alignment="center")
+    with chart_column:
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    with legend_column:
+        for index, row in enumerate(data.itertuples(index=False)):
+            percentage = 0 if total_expense == 0 else int(row.amount) / total_expense * 100
+            color = CATEGORY_COLORS[index % len(CATEGORY_COLORS)]
+            st.markdown(
+                "<div style='align-items:center;border-bottom:1px solid #F1E8E1;"
+                "display:flex;gap:8px;justify-content:space-between;padding:7px 0;'>"
+                "<span style='color:{color};font-size:16px;'>●</span>"
+                "<span style='color:#4E3E36;flex:1;font-size:0.8rem;'>{category}</span>"
+                "<span style='color:#4E3E36;font-size:0.78rem;font-weight:650;'>{amount}</span>"
+                "<span style='color:#9B887D;font-size:0.72rem;min-width:38px;text-align:right;'>{percentage:.1f}%</span>"
+                "</div>".format(
+                    color=color,
+                    category=escape(str(row.category)),
+                    amount=format_currency(int(row.amount)),
+                    percentage=percentage,
+                ),
+                unsafe_allow_html=True,
+            )
 
 
 def cashflow_trend_chart(data: pd.DataFrame) -> None:
@@ -241,11 +301,20 @@ def cashflow_trend_chart(data: pd.DataFrame) -> None:
     fig.update_layout(
         xaxis_title=None,
         hovermode="x unified",
+        height=250,
+        margin=dict(l=8, r=8, t=16, b=4),
     )
-    _apply_currency_axis(fig)
     _apply_layout(fig)
+    fig.update_layout(height=250, margin=dict(l=8, r=8, t=16, b=4))
+    _apply_currency_axis(fig)
+    fig.update_xaxes(showgrid=False, tickfont=dict(color="#9A887E", size=10))
+    fig.update_traces(line=dict(width=2.2), marker=dict(size=4))
 
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        config={"displayModeBar": False},
+    )
 
 
 def monthly_trend_chart(data: pd.DataFrame) -> None:
@@ -293,16 +362,28 @@ def category_monthly_trend_chart(data: pd.DataFrame) -> None:
         data_frame=data,
         x="month",
         y="amount",
-        color_discrete_sequence=[EXPENSE_COLOR],
+        color_discrete_sequence=[PRIMARY_COLOR],
     )
     fig.update_traces(
         hovertemplate="%{x|%b %Y}<br>Rp%{y:,.0f}<extra></extra>",
     )
-    fig.update_layout(xaxis_title=None, showlegend=False)
+    fig.update_layout(
+        xaxis_title=None,
+        showlegend=False,
+        height=284,
+        margin=dict(l=8, r=8, t=8, b=2),
+    )
     _apply_currency_axis(fig)
     _apply_layout(fig)
+    fig.update_layout(height=284, margin=dict(l=8, r=8, t=8, b=2))
+    fig.update_xaxes(
+        showgrid=False,
+        tickformat="%b\n%Y",
+        tickfont=dict(color="#9A887E", size=10),
+        hoverformat="%b %Y",
+    )
 
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def cashflow_forecast_chart(data: pd.DataFrame, today: pd.Timestamp) -> None:
@@ -415,7 +496,12 @@ def scenario_balance_trajectory_chart(
     fig.update_layout(xaxis_title=None, hovermode="x unified")
     _apply_currency_axis(fig)
     _apply_layout(fig)
-    st.plotly_chart(fig, width="stretch")
+    fig.update_xaxes(
+        tickformat="%d %b",
+        hoverformat="%d %b %Y",
+        showgrid=False,
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 # =====================================================

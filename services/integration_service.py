@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 
 from config import BOT_TOKEN, SPREADSHEET_NAME, WORKSHEET_NAME
+from services.google_credentials import get_google_credentials_status
 from services.sheet_service import SheetService
 
 IntegrationState = Literal[
@@ -76,24 +76,29 @@ class IntegrationService:
     def get_google_sheets_status(self) -> IntegrationStatus:
         """Return Google Sheets configuration state before a live health check."""
 
-        credentials_path = self._credentials_path()
-        if not SPREADSHEET_NAME or not WORKSHEET_NAME or not credentials_path.exists():
+        credential_status = get_google_credentials_status()
+        if not SPREADSHEET_NAME or not WORKSHEET_NAME or credential_status == "MISSING":
             return IntegrationStatus(
                 name="Google Sheets",
                 state="Not Configured",
                 details={
                     "Spreadsheet": SPREADSHEET_NAME or "Not configured",
                     "Worksheet": WORKSHEET_NAME or "Not configured",
+                    "Credentials": "Not configured",
                 },
                 message="Google Sheets configuration or credentials were not found.",
             )
+        credential_source = {
+            "ENVIRONMENT": "Environment variable",
+            "LOCAL_FILE": "Local credential file",
+        }[credential_status]
         return IntegrationStatus(
             name="Google Sheets",
             state="Disconnected",
             details={
                 "Spreadsheet": SPREADSHEET_NAME,
                 "Worksheet": WORKSHEET_NAME,
-                "Credentials": "Available",
+                "Credentials": credential_source,
             },
             message="Run a connection test to verify spreadsheet access.",
         )
@@ -107,13 +112,6 @@ class IntegrationService:
         try:
             sheet_service = SheetService()
             sheet_service.worksheet().row_values(1)
-        except FileNotFoundError:
-            return IntegrationStatus(
-                name="Google Sheets",
-                state="Not Configured",
-                details=status.details,
-                message="Google Sheets credentials were not found.",
-            )
         except Exception:
             return IntegrationStatus(
                 name="Google Sheets",
@@ -135,9 +133,3 @@ class IntegrationService:
 
         identifier, separator, secret = token.partition(":")
         return bool(separator and identifier.isdigit() and secret.strip())
-
-    @staticmethod
-    def _credentials_path() -> Path:
-        """Return the existing credentials path used by SheetService."""
-
-        return Path(__file__).resolve().parents[1] / "credentials.json"
